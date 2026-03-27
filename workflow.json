@@ -1,0 +1,391 @@
+[
+    {
+        "name": "process_inventory_import",
+        "label": "",
+        "description": "Quy trình nhập kho tự động: Khởi tạo -> Duyệt danh sách -> Cập nhật từng mục",
+        "parameters": {
+            "session": {
+                "userId": "local_user",
+                "language": "vi",
+                "organizationId": "28753",
+                "itemCond": "Y",
+                "optimizeFlag": "Y",
+                "optimizedApplyDate": "20210316"
+            }
+        },
+        "steps": [
+            {
+                "name": "input_items",
+                "label": "Nhập thông tin lô hàng",
+                "type": "INPUT",
+                "fields": [
+                    {
+                        "label": "Q code",
+                        "name": "items"
+                    }
+                ]
+            },
+            {
+                "name": "StockStatusList",
+                "label": "Stock Status",
+                "type": "HTTP_REQUEST",
+                "loopOver": null,
+                "cache": false,
+                "accumulation": true,
+                "url": "http://localhost:8000/api/nexacro/RetStockStatusList",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "$.session.userId",
+                        "_ems_organizationId": "$.session.organizationId",
+                        "_ems_language": "$.session.language"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_search",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "$.session.organizationId"
+                                },
+                                {
+                                    "name": "itemCond",
+                                    "value": "$.session.itemCond"
+                                },
+                                {
+                                    "name": "optimizedApplyDate",
+                                    "value": "$.session.optimizedApplyDate"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "ds_ItemInfo",
+                            "fields": [
+                                {
+                                    "name": "item",
+                                    "value": "$.input_items.items[*]"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Item ID",
+                        "name": "inventoryItemId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.inventoryItemId[*]"
+                    },
+                    {
+                        "label": "Q Code",
+                        "name": "itemName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemName[*]"
+                    },
+                    {
+                        "label": "Item Description",
+                        "name": "itemDescription",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemDescription[*]"
+                    },
+                    {
+                        "label": "Item Status",
+                        "name": "itemStatus",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemStatus[*]"
+                    },
+                    {
+                        "label": "UOM Code",
+                        "name": "uomCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.uomCode[*]"
+                    },
+                    {
+                        "label": "Catalog Group",
+                        "name": "catalogGroupName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.catalogGroupName[*]"
+                    },
+                    {
+                        "label": "Maker",
+                        "name": "maker",
+                        "type": "JSON_PATH",
+                        "value": "$.response.maker[*]"
+                    },
+                    {
+                        "label": "Model",
+                        "name": "model",
+                        "type": "JSON_PATH",
+                        "value": "$.response.model[*]"
+                    },
+                    {
+                        "label": "Item Spec",
+                        "name": "itemSpec",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemSpec[*]"
+                    },
+                    {
+                        "label": "Red Flag",
+                        "name": "redFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.redFlag[*]"
+                    },
+                    {
+                        "label": "FDM URL",
+                        "name": "fdmUrl",
+                        "type": "JSON_PATH",
+                        "value": "$.response.fdmUrl[*]"
+                    }
+                ]
+            },
+            {
+                "name": "StockDetail",
+                "label": "Stock Detail",
+                "type": "HTTP_REQUEST",
+                "loopOver": "$.StockStatusList.items",
+                "cache": false,
+                "accumulation": true,
+                "url": "http://localhost:8000/api/nexacro/retrieveItemInfoDetail",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "$.session.userId",
+                        "_ems_organizationId": "$.session.organizationId",
+                        "_ems_language": "$.session.language"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_Input",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "$.session.organizationId"
+                                },
+                                {
+                                    "name": "inventoryItemId",
+                                    "source": "$.StockStatusList.inventoryItemId"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Item",
+                        "name": "item",
+                        "type": "JSON_PATH",
+                        "value": "$.response.item[*]"
+                    },
+                    {
+                        "label": "Description",
+                        "name": "description",
+                        "type": "JSON_PATH",
+                        "value": "$.response.description[*]"
+                    },
+                    {
+                        "label": "UOM Code",
+                        "name": "uomCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.uomCode[*]"
+                    },
+                    {
+                        "label": "Maker",
+                        "name": "maker",
+                        "type": "JSON_PATH",
+                        "value": "$.response.maker[*]"
+                    },
+                    {
+                        "label": "Catalog Group",
+                        "name": "catalogGroup",
+                        "type": "JSON_PATH",
+                        "value": "$.response.catalogGroup[*]"
+                    },
+                    {
+                        "label": "Maker Part",
+                        "name": "makerPart",
+                        "type": "JSON_PATH",
+                        "value": "$.response.makerPart[*]"
+                    },
+                    {
+                        "label": "Onhand Qty",
+                        "name": "onhandQuantity",
+                        "type": "JSON_PATH",
+                        "value": "$.response.onhandQuantity[*]"
+                    },
+                    {
+                        "label": "Allocated Qty",
+                        "name": "allocatedQuantity",
+                        "type": "JSON_PATH",
+                        "value": "$.response.allocatedQuantity[*]"
+                    },
+                    {
+                        "label": "Available Qty",
+                        "name": "availableQuantity",
+                        "type": "JSON_PATH",
+                        "value": "$.response.availableQuantity[*]"
+                    },
+                    {
+                        "label": "Vendor Name",
+                        "name": "vendorName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.vendorName[*]"
+                    },
+                    {
+                        "label": "Unit Price PO",
+                        "name": "unitPricePo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.unitPricePo[*]"
+                    },
+                    {
+                        "label": "Stop PO",
+                        "name": "stopPo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.stopPo[*]"
+                    },
+                    {
+                        "label": "Stop PO Desc",
+                        "name": "stopPoDesc",
+                        "type": "JSON_PATH",
+                        "value": "$.response.stopPoDesc[*]"
+                    },
+                    {
+                        "label": "Min Order Qty",
+                        "name": "minOrderQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.minOrderQty[*]"
+                    },
+                    {
+                        "label": "Buy Item Type",
+                        "name": "buyItemType",
+                        "type": "JSON_PATH",
+                        "value": "$.response.buyItemType[*]"
+                    },
+                    {
+                        "label": "Price Reg Status",
+                        "name": "priceRegStatus",
+                        "type": "JSON_PATH",
+                        "value": "$.response.priceRegStatus[*]"
+                    },
+                    {
+                        "label": "Review Qty",
+                        "name": "reviewQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.reviewQty[*]"
+                    },
+                    {
+                        "label": "Target Qty",
+                        "name": "targetQty",
+                        "type": "JSON_PATH", 
+                        "value": "$.response.targetQty[*]"
+                    },
+                    {
+                        "label": "Logic Qty",
+                        "name": "logicQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.logicQty[*]"
+                    },
+                    {
+                        "label": "User Qty",
+                        "name": "userQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.userQty[*]"
+                    },
+                    {
+                        "label": "Safety Stock Qty",
+                        "name": "safetyStockQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.safetyStockQty[*]"
+                    },
+                    {
+                        "label": "User Flag",
+                        "name": "userFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.userFlag[*]"
+                    },
+                    {
+                        "label": "Request Qty",
+                        "name": "requestQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.requestQty[*]"
+                    },
+                    {
+                        "label": "PO Waiting Qty",
+                        "name": "poWaitingQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poWaitingQty[*]"
+                    },
+                    {
+                        "label": "Not Receiving Qty",
+                        "name": "notReceivingQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.notReceivingQty[*]"
+                    },
+                    {
+                        "label": "Onhand Qty (Inv)",
+                        "name": "onhandQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.onhandQty[*]"
+                    },
+                    {
+                        "label": "Full Lead Time",
+                        "name": "fullLeadTimeNew",
+                        "type": "JSON_PATH",
+                        "value": "$.response.fullLeadTimeNew[*]"
+                    }
+                    
+                ]
+            },
+            {
+                "name": "match_inventory_data",
+                "label": "Khớp dữ liệu tổng hợp",
+                "type": "DATA_MAPPING",
+                "description": "Ghép nối dữ liệu từ RetStockStatusList và update_each_item dựa trên mã Item",
+                "inputs": {
+                    "sourceA": "$.StockStatusList",
+                    "sourceB": "$.StockDetail"
+                },
+                "mapping": {
+                    "joinType": "INNER_JOIN",
+                    "joinKeys": [
+                        {
+                            "leftKey": "inventoryItemId",
+                            "rightKey": "inventoryItemId"
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Item Code",
+                        "name": "item",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceA.item"
+                    },
+                    {
+                        "label": "Inventory Item ID",
+                        "name": "inventoryItemId",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceA.inventoryItemId"
+                    },
+                    {
+                        "label": "Item Description",
+                        "name": "description",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.description"
+                    },
+                    {
+                        "label": "Total Onhand Qty",
+                        "name": "totalOnhandQuantity",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.onhandQuantity"
+                    },
+                    {
+                        "label": "Item Status",
+                        "name": "itemStatus",
+                        "type": "CALCULATION",
+                        "value": "$.sourceB.itemStatus = 'Active' && $.sourceA.availableQuantity > 0 ? 'In Stock' : 'Out of Stock'"
+                    }
+                ]
+            }
+        ]
+    }
+]

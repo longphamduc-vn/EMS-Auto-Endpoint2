@@ -1,0 +1,11 @@
+{
+  "process_inventory_import": {
+    "b": {
+      "input_items": {
+        "items": [
+          "BBB"
+        ]
+      }
+    }
+  }
+}
