@@ -8,7 +8,9 @@ utils.py – Các hàm tiện ích dùng chung:
   - INNER_JOIN hai danh sách record
 """
 
+import datetime
 import json
+import math
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -146,41 +148,125 @@ def normalize_records(rows_raw: Any) -> Tuple[List[Dict[str, Any]], int]:
 # CALCULATION expression evaluator
 # ---------------------------------------------------------------------------
 
+def _resolve_calc_reference(context: Dict[str, Any], path: str) -> Any:
+    current: Any = context
+    for part in path.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return None
+    return current
+
+
+def _find_top_level_ternary(expression: str) -> int:
+    depth = 0
+    quote: Optional[str] = None
+    escaped = False
+
+    for index, char in enumerate(expression):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in ("'", '"'):
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif char == "?" and depth == 0:
+            return index
+
+    return -1
+
+
+def _find_matching_ternary_colon(expression: str, question_index: int) -> int:
+    depth = 0
+    nested_ternary = 0
+    quote: Optional[str] = None
+    escaped = False
+
+    for index in range(question_index + 1, len(expression)):
+        char = expression[index]
+
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in ("'", '"'):
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            if char == "?":
+                nested_ternary += 1
+            elif char == ":":
+                if nested_ternary == 0:
+                    return index
+                nested_ternary -= 1
+
+    return -1
+
+
+def _convert_js_ternary(expression: str) -> str:
+    question_index = _find_top_level_ternary(expression)
+    if question_index == -1:
+        return expression
+
+    colon_index = _find_matching_ternary_colon(expression, question_index)
+    if colon_index == -1:
+        return expression
+
+    condition = expression[:question_index].strip()
+    true_expr = expression[question_index + 1:colon_index].strip()
+    false_expr = expression[colon_index + 1:].strip()
+
+    return (
+        f"({_convert_js_ternary(true_expr)}) if ({_convert_js_ternary(condition)}) "
+        f"else ({_convert_js_ternary(false_expr)})"
+    )
+
 def evaluate_calc_expression(
     expression: str,
-    source_a: Dict[str, Any],
-    source_b: Dict[str, Any],
+    context: Dict[str, Any],
 ) -> Any:
     """
-    Đánh giá biểu thức CALCULATION dạng:
-      $.sourceA.field = 'value' && $.sourceB.field > 0 ? 'True branch' : 'False branch'
-    Thay thế tham chiếu JSONPath bằng giá trị thực từ source_a/source_b,
-    rồi eval an toàn (không expose builtins).
+    Đánh giá biểu thức CALCULATION bằng eval(expression) sau khi chuẩn hoá
+    tham chiếu $.scope.field và cú pháp JS phổ biến sang cú pháp Python.
     """
-    expr = expression
+    expr = expression.strip()
 
-    def repl_a(m: re.Match) -> str:
-        return repr(source_a.get(m.group(1)))
+    def replace_reference(match: re.Match) -> str:
+        return repr(_resolve_calc_reference(context, match.group(1)))
 
-    def repl_b(m: re.Match) -> str:
-        return repr(source_b.get(m.group(1)))
+    expr = re.sub(r"\$\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)", replace_reference, expr)
+    expr = re.sub(r"\bNumber\s*\(", "float(", expr)
+    expr = re.sub(r"\btrue\b", "True", expr, flags=re.IGNORECASE)
+    expr = re.sub(r"\bfalse\b", "False", expr, flags=re.IGNORECASE)
+    expr = re.sub(r"\bnull\b", "None", expr, flags=re.IGNORECASE)
+    expr = expr.replace("&&", " and ").replace("||", " or ")
+    expr = re.sub(r"(?<![<>=!])=(?!=)", "==", expr)
+    expr = _convert_js_ternary(expr)
 
-    expr = re.sub(r"\$\.sourceA\.([A-Za-z0-9_]+)", repl_a, expr)
-    expr = re.sub(r"\$\.sourceB\.([A-Za-z0-9_]+)", repl_b, expr)
-
-    if "?" in expr and ":" in expr:
-        condition, rest = expr.split("?", 1)
-        true_val, false_val = rest.split(":", 1)
-    else:
-        condition, true_val, false_val = expr, "True", "False"
-
-    condition = condition.replace("&&", " and ").replace("||", " or ")
-    condition = re.sub(r"(?<![<>=!])=(?!=)", "==", condition)
+    _eval_globals = {
+        "datetime": datetime,
+        "math": math,
+    }
 
     try:
-        cond_result = bool(eval(condition, {"__builtins__": {}}, {}))
-        branch = true_val if cond_result else false_val
-        return eval(branch.strip(), {"__builtins__": {}}, {})
+        return eval(expr, _eval_globals)
     except Exception:
         return None
 

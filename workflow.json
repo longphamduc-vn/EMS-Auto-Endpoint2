@@ -30,7 +30,7 @@
                 "loopOver": null,
                 "cache": false,
                 "accumulation": true,
-                "url": "http://localhost:8000/api/nexacro/RetStockStatusList",
+                "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp110Nav/RetStockStatusList.lgdn",
                 "method": "POST",
                 "payload": {
                     "parameters": {
@@ -67,6 +67,12 @@
                     ]
                 },
                 "extracts": [
+                    {
+                        "label": "Date",
+                        "name": "date",
+                        "type": "CALCULATION",
+                        "value": "1"
+                    },
                     {
                         "label": "Item ID",
                         "name": "inventoryItemId",
@@ -142,7 +148,7 @@
                 "loopOver": null,
                 "cache": false,
                 "accumulation": true,
-                "url": "http://localhost:8000/api/nexacro/retrieveItemInfoDetail",
+                "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp102/sp135Nav/retrieveItemInfoDetail.lgdn",
                 "method": "POST",
                 "payload": {
                     "parameters": {
@@ -338,7 +344,7 @@
                 "loopOver": null,
                 "cache": false,
                 "accumulation": true,
-                "url": "http://localhost:8000/api/nexacro/retrieveItemPoStatusList",
+                "url": "http://ems.lgdisplay.com:9000/emscom/popupNav/retrieveItemPoStatusList.lgdn",
                 "method": "POST",
                 "payload": {
                     "parameters": {
@@ -462,7 +468,7 @@
                 "loopOver": null,
                 "cache": false,
                 "accumulation": true,
-                "url": "http://localhost:8000/api/nexacro/RetEstimateRequestList",
+                "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp120Nav/RetEstimateRequestList.lgdn",
                 "method": "POST",
                 "payload": {
                     "parameters": {
@@ -516,7 +522,7 @@
                         "label": "Date Accumulated",
                         "name": "dateAccumulated",
                         "type": "CALCULATION",
-                        "value": ""
+                        "value": "datetime.datetime.now()"
                     },
                     {
                         "label": "Checked",

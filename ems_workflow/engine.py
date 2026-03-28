@@ -172,24 +172,40 @@ class WorkflowWorker(QThread):
     ) -> Dict[str, Any]:
         """
         Trích xuất các trường cần thiết từ response JSON đã được parse
-        theo danh sách extracts trong config (chỉ hỗ trợ JSON_PATH ở bước này).
+        theo danh sách extracts trong config.
         Trả về dict columnar + key "items" là list row-dict.
         """
         result: Dict[str, Any] = {}
+        response_rows = source.get("response")
+
+        if isinstance(response_rows, list):
+            calc_contexts = [{"response": row} for row in response_rows]
+        elif "response" in source:
+            calc_contexts = [{"response": response_rows}]
+        else:
+            calc_contexts = [{"response": source}]
 
         for ext in extracts:
             name = ext.get("name")
-            if not name or ext.get("type", "JSON_PATH") != "JSON_PATH":
+            if not name:
                 continue
-            vals = jsonpath_values(source, ext.get("value", ""))
-            if not vals and 'reponse' in ext.get("value", ""):
-                corrected_path = ext.get("value", "").replace('reponse', 'response')
-                vals = jsonpath_values(source, corrected_path)
+            ext_type = ext.get("type", "JSON_PATH")
 
-            # Unwrap list-of-list khi JSONPath trả về [[...]]
-            if len(vals) == 1 and isinstance(vals[0], list):
-                vals = vals[0]
-            result[name] = vals
+            if ext_type == "JSON_PATH":
+                vals = jsonpath_values(source, ext.get("value", ""))
+                if not vals and 'reponse' in ext.get("value", ""):
+                    corrected_path = ext.get("value", "").replace('reponse', 'response')
+                    vals = jsonpath_values(source, corrected_path)
+
+                # Unwrap list-of-list khi JSONPath trả về [[...]]
+                if len(vals) == 1 and isinstance(vals[0], list):
+                    vals = vals[0]
+                result[name] = vals
+            elif ext_type == "CALCULATION":
+                result[name] = [
+                    evaluate_calc_expression(ext.get("value", ""), calc_context)
+                    for calc_context in calc_contexts
+                ]
 
         result["items"] = dict_of_lists_to_records(result)
         return result
@@ -431,7 +447,8 @@ class WorkflowWorker(QThread):
                     row[name] = vals[0] if vals else None
                 elif ext_type == "CALCULATION":
                     row[name] = evaluate_calc_expression(
-                        value, pair["sourceA"], pair["sourceB"]
+                        value,
+                        {"sourceA": pair["sourceA"], "sourceB": pair["sourceB"]},
                     )
             out_rows.append(row)
 
