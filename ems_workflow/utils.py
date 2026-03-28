@@ -117,6 +117,30 @@ def dict_of_lists_to_records(data: Dict[str, Any]) -> List[Dict[str, Any]]:
         records.append(rec)
     return records
 
+def normalize_records(rows_raw: Any) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Ép kiểu dữ liệu (coercion) đầu vào thành list các row-dicts.
+    Hữu ích cho việc đổ dữ liệu vào DataGrid / Table.
+    Trả về: (Danh sách dict đã xử lý, số lượng row phải ép kiểu cưỡng bức)
+    """
+    rows: List[Dict[str, Any]] = []
+    coerced_count = 0
+    
+    if isinstance(rows_raw, list):
+        for item in rows_raw:
+            if isinstance(item, dict):
+                rows.append(item)
+            else:
+                coerced_count += 1
+                rows.append({"value": "" if item is None else str(item)})
+    elif isinstance(rows_raw, dict):
+        rows.append(rows_raw)
+        coerced_count = 1
+    elif rows_raw is not None:
+        rows.append({"value": str(rows_raw)})
+        coerced_count = 1
+        
+    return rows, coerced_count
 
 # ---------------------------------------------------------------------------
 # CALCULATION expression evaluator

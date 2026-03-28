@@ -36,7 +36,7 @@ from ..constants import (
     WORKFLOW_FILE,
 )
 from ..engine import WorkflowWorker
-from ..utils import ensure_json_file, load_json
+from ..utils import ensure_json_file, load_json, normalize_records
 from .input_tab import InputTableWidget, build_input_tab, collect_input_data
 from .output_tab import build_output_tab, populate_output_table
 
@@ -326,21 +326,7 @@ class WorkflowApp(QMainWindow):
             self._log(f"[DEBUG] step={step_name} INPUT rows={count} (skip output render)")
             return
 
-        rows: List[Dict[str, Any]] = []
-        coerced_count = 0
-        if isinstance(rows_raw, list):
-            for item in rows_raw:
-                if isinstance(item, dict):
-                    rows.append(item)
-                else:
-                    coerced_count += 1
-                    rows.append({"value": "" if item is None else str(item)})
-        elif isinstance(rows_raw, dict):
-            rows.append(rows_raw)
-            coerced_count = 1
-        elif rows_raw is not None:
-            rows.append({"value": str(rows_raw)})
-            coerced_count = 1
+        rows, coerced_count = normalize_records(rows_raw)
 
         if coerced_count:
             self._log(
