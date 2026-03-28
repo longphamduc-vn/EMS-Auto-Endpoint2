@@ -1,0 +1,286 @@
+[
+  {
+    "name": "ItemStatusSample",
+    "label": "Item Status Sample",
+    "description": "Sample workflow schema for EMS engine",
+    "parameters": {
+      "session": {
+        "organizationId": "28753",
+        "itemCond": "Y",
+        "optimizeFlag": "Y",
+        "optimizedApplyDate": "20210316"
+      }
+    },
+    "steps": [
+      {
+        "name": "input_items",
+        "label": "Input Items",
+        "type": "INPUT",
+        "fields": [
+          {
+            "name": "items",
+            "label": "Q code"
+          }
+        ]
+      },
+      {
+        "name": "StockStatusList",
+        "label": "Stock Status",
+        "type": "HTTP_REQUEST",
+        "loopOver": null,
+        "cache": false,
+        "url": "http://example.local/RetStockStatusList.lgdn",
+        "method": "POST",
+        "payload": {
+          "parameters": {
+            "_ems_userId": "$.session.userId",
+            "_ems_organizationId": "$.session.organizationId"
+          },
+          "datasets": [
+            {
+              "id": "ds_search",
+              "fields": [
+                {
+                  "name": "organizationId",
+                  "value": "$.session.organizationId"
+                },
+                {
+                  "name": "itemCond",
+                  "value": "$.session.itemCond"
+                },
+                {
+                  "name": "optimizedApplyDate",
+                  "value": "$.session.optimizedApplyDate"
+                }
+              ]
+            },
+            {
+              "id": "ds_ItemInfo",
+              "fields": [
+                {
+                  "name": "item",
+                  "value": "$.input_items.items[*]"
+                }
+              ]
+            }
+          ]
+        },
+        "extracts": [
+          {
+            "name": "inventoryItemId",
+            "label": "Item ID",
+            "type": "JSON_PATH",
+            "value": "$.response.inventoryItemId[*]"
+          },
+          {
+            "name": "itemName",
+            "label": "Q Code",
+            "type": "JSON_PATH",
+            "value": "$.response.itemName[*]"
+          },
+          {
+            "name": "itemStatus",
+            "label": "Status",
+            "type": "JSON_PATH",
+            "value": "$.response.itemStatus[*]"
+          }
+        ],
+        "styles": {
+          "rows": [
+            {
+              "when": {
+                "field": "itemStatus",
+                "operator": "eq",
+                "value": "HOLD"
+              },
+              "background": "#fff1f2"
+            }
+          ],
+          "columns": [
+            {
+              "field": "inventoryItemId",
+              "alignment": "right"
+            }
+          ]
+        }
+      },
+      {
+        "name": "StockDetail",
+        "label": "Stock Detail",
+        "type": "HTTP_REQUEST",
+        "loopOver": "$.StockStatusList.inventoryItemId",
+        "cache": false,
+        "url": "http://example.local/retrieveItemInfoDetail.lgdn",
+        "method": "POST",
+        "payload": {
+          "parameters": {
+            "_ems_userId": "$.session.userId",
+            "_ems_organizationId": "$.session.organizationId",
+            "_ems_language": "EN"
+          },
+          "datasets": [
+            {
+              "id": "ds_Input",
+              "fields": [
+                {
+                  "name": "organizationId",
+                  "value": "$.session.organizationId"
+                },
+                {
+                  "name": "inventoryItemId",
+                  "source": "$.StockStatusList.inventoryItemId"
+                }
+              ]
+            }
+          ]
+        },
+        "extracts": [
+          {
+            "name": "item",
+            "label": "Item",
+            "type": "JSON_PATH",
+            "value": "$.response.item[*]"
+          },
+          {
+            "name": "onhandQty",
+            "label": "Onhand",
+            "type": "JSON_PATH",
+            "value": "$.response.onhandQty[*]"
+          }
+        ]
+      },
+      {
+        "name": "match_inventory_data",
+        "label": "Match Inventory",
+        "type": "DATA_MAPPING",
+        "inputs": {
+          "sourceA": "$.StockStatusList",
+          "sourceB": "$.StockDetail"
+        },
+        "mapping": {
+          "joinType": "INNER_JOIN",
+          "joinKeys": [
+            {
+              "leftKey": "itemName",
+              "rightKey": "item"
+            }
+          ]
+        },
+        "extracts": [
+          {
+            "name": "itemCode",
+            "label": "Item Code",
+            "type": "JSON_PATH",
+            "value": "$.sourceA.itemName"
+          },
+          {
+            "name": "stockStatus",
+            "label": "Stock Status",
+            "type": "JSON_PATH",
+            "value": "$.sourceA.itemStatus"
+          },
+          {
+            "name": "onhandQty",
+            "label": "Onhand Qty",
+            "type": "JSON_PATH",
+            "value": "$.sourceB.onhandQty"
+          }
+        ]
+      },
+      {
+        "name": "complex_transform",
+        "label": "Complex Transform",
+        "type": "DATA_TRANSFORM",
+        "source": "$.match_inventory_data",
+        "transforms": [
+          {
+            "type": "ACCUMULATE",
+            "mode": "load",
+            "source": "$.accumulated_data.ItemStatusSample.complex_transform"
+          },
+          {
+            "type": "MERGE",
+            "leftSource": "$current",
+            "rightSource": "$.StockDetail",
+            "joinType": "LEFT_JOIN",
+            "joinKeys": [
+              {
+                "leftKey": "itemCode",
+                "rightKey": "item"
+              }
+            ],
+            "leftPrefix": "map.",
+            "rightPrefix": "detail."
+          },
+          {
+            "type": "DUPLICATE",
+            "field": "map.stockStatus",
+            "targetField": "statusCopy"
+          },
+          {
+            "type": "GROUP BY",
+            "keys": [
+              "map.itemCode",
+              "statusCopy"
+            ],
+            "aggregations": [
+              {
+                "field": "detail.onhandQty",
+                "op": "sum",
+                "target": "totalOnhand"
+              },
+              {
+                "field": "map.itemCode",
+                "op": "count",
+                "target": "lineCount"
+              }
+            ]
+          },
+          {
+            "type": "ACCUMULATE",
+            "target": "complex_transform"
+          },
+          {
+            "type": "PIVOT",
+            "index": [
+              "map.itemCode"
+            ],
+            "columnField": "statusCopy",
+            "valueField": "totalOnhand",
+            "aggregator": "sum",
+            "fillValue": 0
+          },
+          {
+            "type": "SORT",
+            "keys": [
+              {
+                "field": "map.itemCode",
+                "direction": "asc"
+              }
+            ]
+          }
+        ],
+        "styles": {
+          "rows": [
+            {
+              "when": {
+                "field": "HOLD",
+                "operator": "gt",
+                "value": 0
+              },
+              "background": "#fff7ed"
+            }
+          ],
+          "columns": [
+            {
+              "field": "HOLD",
+              "foreground": "#b45309",
+              "fontWeight": "bold",
+              "alignment": "right"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]
