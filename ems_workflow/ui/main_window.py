@@ -36,7 +36,7 @@ from ..constants import (
     WORKFLOW_FILE,
 )
 from ..engine import WorkflowWorker
-from ..utils import ensure_json_file, load_json, normalize_records
+from ..utils import dict_of_lists_to_records, ensure_json_file, load_json, normalize_records
 from .input_tab import InputTableWidget, build_input_tab, collect_input_data
 from .output_tab import build_output_tab, populate_output_table
 
@@ -315,9 +315,14 @@ class WorkflowApp(QMainWindow):
             rows_raw: Any = []
         else:
             keys_preview = ", ".join(list(data.keys())[:8])
-            rows_raw = data.get("items", [])
+            rows_raw = dict_of_lists_to_records(data)
+            seq_sizes = {
+                k: len(v)
+                for k, v in data.items()
+                if hasattr(v, "__len__") and not isinstance(v, (str, bytes, bytearray, dict))
+            }
             self._log(
-                f"[DEBUG] step={step_name} keys=[{keys_preview}] items_type={type(rows_raw).__name__}"
+                f"[DEBUG] step={step_name} keys=[{keys_preview}] rows_raw={len(rows_raw)} seq_sizes={seq_sizes}"
             )
 
         # INPUT tab đã có bảng nhập riêng, không render lại như output table.

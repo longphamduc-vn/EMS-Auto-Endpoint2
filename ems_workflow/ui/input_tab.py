@@ -65,7 +65,7 @@ def collect_input_data(
 ) -> Dict[str, List[str]]:
     """
     Đọc toàn bộ dữ liệu từ bảng nhập liệu, bỏ qua hàng trống.
-    Trả về dict {field_name: [val1, val2, ...]} + key "items" alias cột đầu tiên.
+    Trả về dict {field_name: [val1, val2, ...]}.
     """
     fields = step.get("fields", [])
     col_map = [f.get("name", f"col_{i}") for i, f in enumerate(fields)]
@@ -83,9 +83,6 @@ def collect_input_data(
         if has_data:
             for k, v in row_vals.items():
                 out[k].append(v)
-
-    # "items" = alias của cột đầu tiên, dùng cho loopOver và ds_ItemInfo
-    out["items"] = out[col_map[0]] if col_map else []
     return out
 
 

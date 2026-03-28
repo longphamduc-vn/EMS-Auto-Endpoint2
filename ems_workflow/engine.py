@@ -12,6 +12,7 @@ Phát các pyqtSignal để cập nhật UI mà không block main thread:
 import hashlib
 import json
 import os
+import re
 import traceback
 from copy import deepcopy
 from datetime import datetime
@@ -30,6 +31,7 @@ from .utils import (
     load_json,
     merge_records_inner,
     normalize_extracts,
+    records_to_dict_of_lists,
     save_json,
 )
 
@@ -173,7 +175,7 @@ class WorkflowWorker(QThread):
         """
         Trích xuất các trường cần thiết từ response JSON đã được parse
         theo danh sách extracts trong config.
-        Trả về dict columnar + key "items" là list row-dict.
+        Trả về dict columnar {field: [values...]}.
         """
         result: Dict[str, Any] = {}
         response_rows = source.get("response")
@@ -206,8 +208,6 @@ class WorkflowWorker(QThread):
                     evaluate_calc_expression(ext.get("value", ""), calc_context)
                     for calc_context in calc_contexts
                 ]
-
-        result["items"] = dict_of_lists_to_records(result)
         return result
 
     # ------------------------------------------------------------------
@@ -267,15 +267,184 @@ class WorkflowWorker(QThread):
           { "step_name": [ {...row1...}, {...row2...}, ... ] }
         """
         path = os.path.join(self.base_dir, ACCUMULATED_FILE)
-        current: Dict[str, Any] = load_json(path, {})
-        current.setdefault(step_name, [])
-        before_count = len(current[step_name])
-        current[step_name].extend(data.get("items", []))
-        after_count = len(current[step_name])
+        current = self._load_accumulated_store()
+        current_rows = current.setdefault(step_name, [])
+        if not isinstance(current_rows, list):
+            current_rows = self._records_from_step_data(current_rows)
+            current[step_name] = current_rows
+
+        new_rows = self._records_from_step_data(data)
+        before_count = len(current_rows)
+        current_rows.extend(new_rows)
+        after_count = len(current_rows)
         save_json(path, current)
         self.log(
             f"[DEBUG] accumulation step={step_name} appended={after_count - before_count} total={after_count} file={path}"
         )
+
+    def _load_accumulated_store(self) -> Dict[str, Any]:
+        path = os.path.join(self.base_dir, ACCUMULATED_FILE)
+        current = load_json(path, {})
+        if isinstance(current, dict):
+            return current
+        self.log(
+            f"[DEBUG] accumulation invalid_store_type={type(current).__name__} reset_to_empty path={path}"
+        )
+        return {}
+
+    def _rows_to_result(self, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return records_to_dict_of_lists(rows)
+
+    def _flatten_accumulation_values(self, value: Any) -> List[Any]:
+        if isinstance(value, list):
+            flattened: List[Any] = []
+            for item in value:
+                flattened.extend(self._flatten_accumulation_values(item))
+            return flattened
+        return [value]
+
+    def _records_from_step_data(self, step_data: Any) -> List[Dict[str, Any]]:
+        if isinstance(step_data, list):
+            return [row for row in step_data if isinstance(row, dict)]
+        if not isinstance(step_data, dict):
+            return []
+
+        return dict_of_lists_to_records(step_data)
+
+    def _resolve_accumulation_context_values(
+        self,
+        context: Dict[str, Any],
+        json_path: str,
+    ) -> List[Any]:
+        values = jsonpath_values(context, json_path)
+        if values:
+            flattened_values: List[Any] = []
+            for value in values:
+                flattened_values.extend(self._flatten_accumulation_values(value))
+            return flattened_values
+
+        match = re.fullmatch(
+            r"\$\.([A-Za-z0-9_]+)(?:\.items)?\[\*\]\.([A-Za-z0-9_]+)",
+            json_path.strip(),
+        )
+        if match:
+            step_name, field_name = match.groups()
+            step_data = context.get(step_name)
+            extracted = []
+            for item in self._records_from_step_data(step_data):
+                if field_name in item:
+                    extracted.append(item.get(field_name))
+            if extracted:
+                return extracted
+
+        return []
+
+    def _parse_accumulation_expression(
+        self,
+        expression: str,
+    ) -> Optional[Tuple[str, str, Optional[str], Optional[str]]]:
+        prefix = "$.accumulated_data."
+        if not expression.startswith(prefix):
+            return None
+
+        remainder = expression[len(prefix):].strip()
+        if "." not in remainder:
+            return None
+
+        task_name, step_part = remainder.split(".", 1)
+        task_name = task_name.strip()
+        step_part = step_part.strip()
+        if not task_name or not step_part:
+            return None
+
+        filter_start = step_part.find("[?(")
+        if filter_start == -1:
+            return task_name, step_part, None, None
+
+        step_name = step_part[:filter_start].strip()
+        filter_suffix = step_part[filter_start:]
+        if not step_name or not filter_suffix.endswith(")]"):
+            return None
+
+        filter_body = filter_suffix[3:-2].strip()
+        match = re.fullmatch(r"@\.([A-Za-z0-9_]+)\s+in\s+(.+)", filter_body)
+        if not match:
+            return None
+
+        row_field, context_path = match.groups()
+        context_path = context_path.strip()
+        if not context_path:
+            return None
+
+        return task_name, step_name, row_field, context_path
+
+    def resolve_accumulated_display(
+        self,
+        step: Dict[str, Any],
+        context: Dict[str, Any],
+        live_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        accumulation = step.get("accumulation", False)
+        if accumulation is not True and not isinstance(accumulation, str):
+            return live_result
+
+        if accumulation is True:
+            return live_result
+
+        expression = accumulation.strip()
+        parsed = self._parse_accumulation_expression(expression)
+        if parsed is None:
+            self.log(
+                f"[DEBUG] accumulation step={step.get('name', 'step')} unsupported_expression={expression}"
+            )
+            return live_result
+
+        task_name, accumulated_step_name, row_field, context_path = parsed
+        current_task_name = str(self.task.get("name", ""))
+        if task_name != current_task_name:
+            self.log(
+                f"[DEBUG] accumulation step={step.get('name', 'step')} task_mismatch={task_name}!={current_task_name}"
+            )
+
+        accumulated_data = self._load_accumulated_store()
+        rows_raw = accumulated_data.get(accumulated_step_name, [])
+        rows = self._records_from_step_data(rows_raw)
+        live_rows = self._records_from_step_data(live_result)
+
+        if not row_field or not context_path:
+            self.log(
+                f"[DEBUG] accumulation step={step.get('name', 'step')} loaded_rows={len(rows)} without_filter"
+            )
+            if rows:
+                return self._rows_to_result(rows)
+            return self._rows_to_result(live_rows)
+
+        allowed_values = {
+            value
+            for value in self._resolve_accumulation_context_values(context, context_path)
+            if value is not None and not isinstance(value, dict)
+        }
+        if not allowed_values:
+            self.log(
+                f"[DEBUG] accumulation step={step.get('name', 'step')} empty_filter_values accumulated_rows={len(rows)} fallback_to_live={len(live_rows)}"
+            )
+            if rows:
+                return self._rows_to_result(rows)
+            return self._rows_to_result(live_rows)
+
+        filtered_rows = [row for row in rows if row.get(row_field) in allowed_values]
+        if not filtered_rows and rows:
+            self.log(
+                f"[DEBUG] accumulation step={step.get('name', 'step')} filter_miss fallback_to_accumulated={len(rows)}"
+            )
+            return self._rows_to_result(rows)
+
+        if not filtered_rows and live_rows:
+            filtered_rows = [row for row in live_rows if row.get(row_field) in allowed_values]
+        self.log(
+            f"[DEBUG] accumulation step={step.get('name', 'step')} loaded_rows={len(rows)} filtered_rows={len(filtered_rows)} context_values={len(allowed_values)}"
+        )
+        return self._rows_to_result(filtered_rows)
 
     # ------------------------------------------------------------------
     # Step runners
@@ -346,7 +515,7 @@ class WorkflowWorker(QThread):
                         f"({idx + 1}/{len(loop_items)})"
                     )
                     self.log(
-                        f"[DEBUG] HTTP step={step_name} cached_items={len(step_data.get('items', []))}"
+                        f"[DEBUG] HTTP step={step_name} cached_items={len(self._records_from_step_data(step_data))}"
                     )
 
             self.log(
@@ -371,17 +540,15 @@ class WorkflowWorker(QThread):
 
 
             # Gộp kết quả vào aggregate
-            for row in step_data.get("items", []):
+            for row in self._records_from_step_data(step_data):
                 aggregate_rows.append(row)
             for k, v in step_data.items():
-                if k == "items":
-                    continue
                 if isinstance(v, list):
                     aggregate_cols.setdefault(k, []).extend(v)
 
-        result: Dict[str, Any] = dict(aggregate_cols)
-    
-        result["items"] = aggregate_rows
+        result = dict(aggregate_cols)
+        if not result and aggregate_rows:
+            result = records_to_dict_of_lists(aggregate_rows)
         self.log(
             f"[DEBUG] HTTP step={step_name} aggregate_items={len(aggregate_rows)}"
         )
@@ -457,10 +624,7 @@ class WorkflowWorker(QThread):
                 f"[DEBUG] MAP step={step.get('name', 'mapping')} first_row={self._to_json_preview(out_rows[0], 300)}"
             )
 
-        result: Dict[str, Any] = {"items": out_rows}
-        if out_rows:
-            for col in out_rows[0].keys():
-                result[col] = [r.get(col) for r in out_rows]
+        result = records_to_dict_of_lists(out_rows)
         self.log(
             f"[DEBUG] MAP step={step.get('name', 'mapping')} output_items={len(out_rows)}"
         )
@@ -501,22 +665,24 @@ class WorkflowWorker(QThread):
                 )
 
                 if step_type == "INPUT":
-                    data = context.get(step_name, {"items": []})
+                    data = context.get(step_name, {})
                     self.step_completed.emit(step_name, data, False)
 
                 elif step_type == "HTTP_REQUEST":
                     result, cache_used = self.run_http_step(step, context)
                     context[step_name] = result
-                    self.step_completed.emit(step_name, result, cache_used)
                     if step.get("accumulation", False):
                         self.append_accumulated(step_name, result)
+                    display_result = self.resolve_accumulated_display(step, context, result)
+                    self.step_completed.emit(step_name, display_result, cache_used)
 
                 elif step_type == "DATA_MAPPING":
                     result = self.run_mapping_step(step, context)
                     context[step_name] = result
-                    self.step_completed.emit(step_name, result, False)
                     if step.get("accumulation", False):
                         self.append_accumulated(step_name, result)
+                    display_result = self.resolve_accumulated_display(step, context, result)
+                    self.step_completed.emit(step_name, display_result, False)
 
                 else:
                     raise RuntimeError(f"Unsupported step type: {step_type!r}")

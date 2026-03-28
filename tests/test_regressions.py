@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -44,6 +45,142 @@ class WorkflowRegressionTests(unittest.TestCase):
 
         self.assertEqual(result["inventoryItemId"], ["INV1001"])
         self.assertEqual(result["items"], [{"inventoryItemId": "INV1001"}])
+
+    def test_resolve_accumulated_display_filters_by_current_context_items(self) -> None:
+        worker = WorkflowWorker(
+            {"name": "ItemStatus", "steps": []},
+            {},
+            tempfile.gettempdir(),
+        )
+        step = {
+            "name": "EstimateHistory",
+            "accumulation": "$.accumulated_data.ItemStatus.EstimateHistory[?(@.item in $.StockDetail[*].item )]",
+        }
+        context = {
+            "StockDetail": {
+                "items": [
+                    {"item": "QCAKA0171"},
+                    {"item": "QDAA48980"},
+                ]
+            }
+        }
+        accumulated_rows = {
+            "EstimateHistory": [
+                {"item": "QCAKA0171", "value": 1},
+                {"item": "QCAKA0104", "value": 2},
+                {"item": "QDAA48980", "value": 3},
+            ]
+        }
+
+        with patch("ems_workflow.engine.load_json", return_value=accumulated_rows):
+            result = worker.resolve_accumulated_display(step, context, {"items": []})
+
+        self.assertEqual(
+            result["items"],
+            [
+                {"item": "QCAKA0171", "value": 1},
+                {"item": "QDAA48980", "value": 3},
+            ],
+        )
+
+    def test_parse_accumulation_expression_supports_filter_syntax(self) -> None:
+        worker = self.make_worker()
+
+        parsed = worker._parse_accumulation_expression(
+            "$.accumulated_data.ItemStatus.EstimateHistory[?(@.item in $.StockDetail[*].item )]"
+        )
+
+        self.assertEqual(
+            parsed,
+            (
+                "ItemStatus",
+                "EstimateHistory",
+                "item",
+                "$.StockDetail[*].item",
+            ),
+        )
+
+    def test_resolve_accumulation_context_values_supports_step_items_shorthand(self) -> None:
+        worker = self.make_worker()
+        context = {
+            "StockDetail": {
+                "items": [
+                    {"item": "QCAKA0171"},
+                    {"item": "QDAA48980"},
+                ]
+            }
+        }
+
+        values = worker._resolve_accumulation_context_values(
+            context,
+            "$.StockDetail[*].item",
+        )
+
+        self.assertEqual(values, ["QCAKA0171", "QDAA48980"])
+
+    def test_resolve_accumulated_display_flattens_nested_filter_values(self) -> None:
+        worker = WorkflowWorker(
+            {"name": "ItemStatus", "steps": []},
+            {},
+            tempfile.gettempdir(),
+        )
+        step = {
+            "name": "EstimateHistory",
+            "accumulation": "$.accumulated_data.ItemStatus.EstimateHistory[?(@.item in $.StockDetail[*].item )]",
+        }
+        context = {
+            "StockDetail": {
+                "item": ["QCAKA0171", "QDAA48980"],
+            }
+        }
+        accumulated_rows = {
+            "EstimateHistory": [
+                {"item": "QCAKA0171", "value": 1},
+                {"item": "QCAKA0104", "value": 2},
+                {"item": "QDAA48980", "value": 3},
+            ]
+        }
+
+        with patch("ems_workflow.engine.load_json", return_value=accumulated_rows):
+            result = worker.resolve_accumulated_display(step, context, {"items": []})
+
+        self.assertEqual(
+            result["items"],
+            [
+                {"item": "QCAKA0171", "value": 1},
+                {"item": "QDAA48980", "value": 3},
+            ],
+        )
+
+    def test_records_from_step_data_supports_columnar_dict_without_items(self) -> None:
+        worker = self.make_worker()
+
+        rows = worker._records_from_step_data(
+            {
+                "item": ["QCAKA0171", "QDAA48980"],
+                "value": [1, 3],
+            }
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                {"item": "QCAKA0171", "value": 1},
+                {"item": "QDAA48980", "value": 3},
+            ],
+        )
+
+    def test_resolve_accumulated_display_keeps_live_result_for_boolean_flag(self) -> None:
+        worker = self.make_worker()
+        live_result = {"items": [{"item": "LIVE"}]}
+
+        result = worker.resolve_accumulated_display(
+            {"name": "EstimateHistory", "accumulation": True},
+            {},
+            live_result,
+        )
+
+        self.assertIs(result, live_result)
 
     def test_fill_input_table_clears_old_cells(self) -> None:
         step = {"fields": [{"name": "items", "label": "Item"}]}

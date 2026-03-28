@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple
 
 from jsonpath_ng.ext import parse
@@ -33,14 +34,26 @@ def load_json(path: str, default: Any) -> Any:
     """Đọc file JSON; trả về default nếu file không tồn tại hoặc lỗi parse."""
     if not os.path.exists(path):
         return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return default
+
+
+class _JsonEncoder(json.JSONEncoder):
+    """Encoder mở rộng: tự chuyển datetime/date/time sang chuỗi ISO-8601."""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 def save_json(path: str, data: Any) -> None:
     """Ghi dữ liệu ra file JSON (UTF-8, indent=2)."""
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False, indent=2, cls=_JsonEncoder)
 
 
 # ---------------------------------------------------------------------------
@@ -95,29 +108,60 @@ def flatten_single(value: Any) -> Any:
 def dict_of_lists_to_records(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Chuyển dict dạng columnar {col: [v1,v2,...]} sang list of row-dicts.
-    Nếu data đã có key 'items' là list-of-dict thì dùng luôn.
     """
     if not isinstance(data, dict):
         return []
-    items = data.get("items")
-    if isinstance(items, list) and items and isinstance(items[0], dict):
-        return items
+    if not data:
+        return []
 
-    list_keys = [k for k, v in data.items() if isinstance(v, list)]
-    if not list_keys:
+    def _is_sequence_value(value: Any) -> bool:
+        if isinstance(value, (str, bytes, bytearray, dict)):
+            return False
+        return isinstance(value, Sequence)
+
+    seq_values: Dict[str, List[Any]] = {}
+    for key, value in data.items():
+        if _is_sequence_value(value):
+            seq_values[key] = list(value)
+
+    if not seq_values:
         return [data]
 
-    max_len = max(len(data[k]) for k in list_keys)
+    max_len = max(len(values) for values in seq_values.values())
+    if max_len == 0:
+        return []
+
     records: List[Dict[str, Any]] = []
     for i in range(max_len):
         rec: Dict[str, Any] = {}
         for key, val in data.items():
-            if isinstance(val, list):
-                rec[key] = val[i] if i < len(val) else None
+            if key in seq_values:
+                seq_val = seq_values[key]
+                # Nếu mảng chỉ có 1 phần tử nhưng số dòng tối đa > 1 thì lặp lại phần tử đó (broadcast)
+                if len(seq_val) == 1 and max_len > 1:
+                    rec[key] = seq_val[0]
+                else:
+                    rec[key] = seq_val[i] if i < len(seq_val) else None
             else:
                 rec[key] = val
         records.append(rec)
     return records
+
+
+def records_to_dict_of_lists(rows: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
+    """Chuyển list row-dicts sang dict dạng columnar {col: [v1, v2, ...]}."""
+    columns: List[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for key in row.keys():
+            if key not in columns:
+                columns.append(key)
+
+    return {
+        key: [row.get(key) if isinstance(row, dict) else None for row in rows]
+        for key in columns
+    }
 
 def normalize_records(rows_raw: Any) -> Tuple[List[Dict[str, Any]], int]:
     """

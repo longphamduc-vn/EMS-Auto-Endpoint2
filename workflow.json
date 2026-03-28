@@ -29,7 +29,6 @@
                 "type": "HTTP_REQUEST",
                 "loopOver": null,
                 "cache": false,
-                "accumulation": true,
                 "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp110Nav/RetStockStatusList.lgdn",
                 "method": "POST",
                 "payload": {
@@ -145,9 +144,8 @@
                 "name": "StockDetail",
                 "label": "Stock Detail",
                 "type": "HTTP_REQUEST",
-                "loopOver": null,
+                "loopOver": "$.StockStatusList.inventoryItemId",
                 "cache": false,
-                "accumulation": true,
                 "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp102/sp135Nav/retrieveItemInfoDetail.lgdn",
                 "method": "POST",
                 "payload": {
@@ -341,9 +339,8 @@
                 "name": "PoStatusCheck",
                 "label": "PO Status Check",
                 "type": "HTTP_REQUEST",
-                "loopOver": null,
+                "loopOver": "$.StockStatusList.inventoryItemId",
                 "cache": false,
-                "accumulation": true,
                 "url": "http://ems.lgdisplay.com:9000/emscom/popupNav/retrieveItemPoStatusList.lgdn",
                 "method": "POST",
                 "payload": {
@@ -467,7 +464,7 @@
                 "type": "HTTP_REQUEST",
                 "loopOver": null,
                 "cache": false,
-                "accumulation": true,
+                "accumulation": "$.accumulated_data.ItemStatus.EstimateHistory[?(@.item in $.StockDetail[*].item )]",
                 "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp120Nav/RetEstimateRequestList.lgdn",
                 "method": "POST",
                 "payload": {
