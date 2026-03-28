@@ -1,12 +1,10 @@
 [
     {
-        "name": "process_inventory_import",
-        "label": "",
-        "description": "Quy trình nhập kho tự động: Khởi tạo -> Duyệt danh sách -> Cập nhật từng mục",
+        "name": "ItemStatus",
+        "label": "Item Status",
+        "description": "",
         "parameters": {
             "session": {
-                "userId": "local_user",
-                "language": "vi",
                 "organizationId": "28753",
                 "itemCond": "Y",
                 "optimizeFlag": "Y",
@@ -36,9 +34,8 @@
                 "method": "POST",
                 "payload": {
                     "parameters": {
-                        "_ems_userId": "$.session.userId",
-                        "_ems_organizationId": "$.session.organizationId",
-                        "_ems_language": "$.session.language"
+                        "_ems_userId": "$.session.__ems_userId",
+                        "_ems_organizationId": "$.session.__ems_organizationId"
                     },
                     "datasets": [
                         {
@@ -142,16 +139,16 @@
                 "name": "StockDetail",
                 "label": "Stock Detail",
                 "type": "HTTP_REQUEST",
-                "loopOver": "$.StockStatusList.items",
+                "loopOver": null,
                 "cache": false,
                 "accumulation": true,
                 "url": "http://localhost:8000/api/nexacro/retrieveItemInfoDetail",
                 "method": "POST",
                 "payload": {
                     "parameters": {
-                        "_ems_userId": "$.session.userId",
-                        "_ems_organizationId": "$.session.organizationId",
-                        "_ems_language": "$.session.language"
+                        "_ems_userId": "$.session.auth_token",
+                        "_ems_organizationId": "$.session.auth_token",
+                        "_ems_language": "$.session.auth_token"
                     },
                     "datasets": [
                         {
@@ -275,7 +272,7 @@
                     {
                         "label": "Target Qty",
                         "name": "targetQty",
-                        "type": "JSON_PATH", 
+                        "type": "JSON_PATH",
                         "value": "$.response.targetQty[*]"
                     },
                     {
@@ -332,14 +329,580 @@
                         "type": "JSON_PATH",
                         "value": "$.response.fullLeadTimeNew[*]"
                     }
-                    
+                ]
+            },
+            {
+                "name": "PoStatusCheck",
+                "label": "PO Status Check",
+                "type": "HTTP_REQUEST",
+                "loopOver": null,
+                "cache": false,
+                "accumulation": true,
+                "url": "http://localhost:8000/api/nexacro/retrieveItemPoStatusList",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "658359",
+                        "_ems_organizationId": "$.session.organizationId",
+                        "_ems_language": "EN"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_Search",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "$.session.organizationId"
+                                },
+                                {
+                                    "name": "invItemList",
+                                    "source": "$.StockStatusList.inventoryItemId"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Item",
+                        "name": "item",
+                        "type": "JSON_PATH",
+                        "value": "$.response.item[*]"
+                    },
+                    {
+                        "label": "Disuse Inventory Flag",
+                        "name": "disuseInventoryFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.disuseInventoryFlag[*]"
+                    },
+                    {
+                        "label": "Inventory Item Status",
+                        "name": "inventoryItemStatusCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.inventoryItemStatusCode[*]"
+                    },
+                    {
+                        "label": "Aging Interlock Flag",
+                        "name": "agingInterlockFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.agingInterlockFlag[*]"
+                    },
+                    {
+                        "label": "Unit Price Status Code",
+                        "name": "unitPriceStatusCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.unitPriceStatusCode[*]"
+                    },
+                    {
+                        "label": "Buyer ID",
+                        "name": "buyerId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.buyerId[*]"
+                    },
+                    {
+                        "label": "Unit Price Flag",
+                        "name": "unitPriceFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.unitPriceFlag[*]"
+                    },
+                    {
+                        "label": "Stop PO Flag",
+                        "name": "stopPoFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.stopPoFlag[*]"
+                    },
+                    {
+                        "label": "Transfer Qty",
+                        "name": "transferQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.transferQty[*]"
+                    },
+                    {
+                        "label": "Transfer Flag",
+                        "name": "transferFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.transferFlag[*]"
+                    },
+                    {
+                        "label": "Apply Flag",
+                        "name": "applyFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.applyFlag[*]"
+                    },
+                    {
+                        "label": "Wait Repair Qty",
+                        "name": "waitRepairQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.waitRepairQty[*]"
+                    },
+                    {
+                        "label": "Wait Repair Flag",
+                        "name": "waitRepairFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.waitRepairFlag[*]"
+                    },
+                    {
+                        "label": "PO Opt Target Flag",
+                        "name": "poOptTargetFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poOptTargetFlag[*]"
+                    },
+                    {
+                        "label": "Qlty Mgt Target Flag",
+                        "name": "qltyMgtTargetFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.qltyMgtTargetFlag[*]"
+                    }
+                ]
+            },
+            {
+                "name": "EstimateHistory",
+                "label": "Estimate History",
+                "type": "HTTP_REQUEST",
+                "loopOver": null,
+                "cache": false,
+                "accumulation": true,
+                "url": "http://localhost:8000/api/nexacro/RetEstimateRequestList",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "658359",
+                        "_ems_organizationId": "$.session.organizationId",
+                        "_ems_language": "EN"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_Search",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "28753"
+                                },
+                                {
+                                    "name": "itemType",
+                                    "value": "Q"
+                                },
+                                {
+                                    "name": "estimateRequestDateFrom",
+                                    "value": "20250301"
+                                },
+                                {
+                                    "name": "estimateRequestDateTo",
+                                    "value": "20260327"
+                                },
+                                {
+                                    "name": "userId",
+                                    "value": "658359"
+                                },
+                                {
+                                    "name": "itemYn",
+                                    "value": "Y"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "ds_ItemInfo",
+                            "fields": [
+                                {
+                                    "name": "item",
+                                    "value": "$.input_items.items[*]"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Date Accumulated",
+                        "name": "dateAccumulated",
+                        "type": "CALCULATION",
+                        "value": ""
+                    },
+                    {
+                        "label": "Checked",
+                        "name": "checked",
+                        "type": "JSON_PATH",
+                        "value": "$.response.checked[*]"
+                    },
+                    {
+                        "label": "PRV No",
+                        "name": "prvNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.prvNo[*]"
+                    },
+                    {
+                        "label": "File PRV No",
+                        "name": "filePrvNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.filePrvNo[*]"
+                    },
+                    {
+                        "label": "Estimate Request Date",
+                        "name": "estimateRequestDate",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimateRequestDate[*]"
+                    },
+                    {
+                        "label": "Contact",
+                        "name": "contact",
+                        "type": "JSON_PATH",
+                        "value": "$.response.contact[*]"
+                    },
+                    {
+                        "label": "Factory",
+                        "name": "factory",
+                        "type": "JSON_PATH",
+                        "value": "$.response.factory[*]"
+                    },
+                    {
+                        "label": "EM No",
+                        "name": "emNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.emNo[*]"
+                    },
+                    {
+                        "label": "EM No Desc",
+                        "name": "emNoDesc",
+                        "type": "JSON_PATH",
+                        "value": "$.response.emNoDesc[*]"
+                    },
+                    {
+                        "label": "Budget Dept",
+                        "name": "budgetDept",
+                        "type": "JSON_PATH",
+                        "value": "$.response.budgetDept[*]"
+                    },
+                    {
+                        "label": "Budget Dept Code",
+                        "name": "budgetDepartmentCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.budgetDepartmentCode[*]"
+                    },
+                    {
+                        "label": "Work Order",
+                        "name": "workOrder",
+                        "type": "JSON_PATH",
+                        "value": "$.response.workOrder[*]"
+                    },
+                    {
+                        "label": "WO Type",
+                        "name": "woType",
+                        "type": "JSON_PATH",
+                        "value": "$.response.woType[*]"
+                    },
+                    {
+                        "label": "Request Comment",
+                        "name": "requestComment",
+                        "type": "JSON_PATH",
+                        "value": "$.response.requestComment[*]"
+                    },
+                    {
+                        "label": "Item",
+                        "name": "item",
+                        "type": "JSON_PATH",
+                        "value": "$.response.item[*]"
+                    },
+                    {
+                        "label": "Item Description",
+                        "name": "itemDescription",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemDescription[*]"
+                    },
+                    {
+                        "label": "Serial Number",
+                        "name": "serialNumber",
+                        "type": "JSON_PATH",
+                        "value": "$.response.serialNumber[*]"
+                    },
+                    {
+                        "label": "Supplier",
+                        "name": "supplier",
+                        "type": "JSON_PATH",
+                        "value": "$.response.supplier[*]"
+                    },
+                    {
+                        "label": "PO Ownership",
+                        "name": "poOwnership",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poOwnership[*]"
+                    },
+                    {
+                        "label": "Request Qty",
+                        "name": "requestQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.requestQty[*]"
+                    },
+                    {
+                        "label": "Pre RFQ Request No",
+                        "name": "preRfqRequestNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.preRfqRequestNo[*]"
+                    },
+                    {
+                        "label": "Requestor Name",
+                        "name": "requestorName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.requestorName[*]"
+                    },
+                    {
+                        "label": "Pre-Estimate Status",
+                        "name": "preEstimateStatus",
+                        "type": "JSON_PATH",
+                        "value": "$.response.preEstimateStatus[*]"
+                    },
+                    {
+                        "label": "Estimating PR No",
+                        "name": "estimatingPrNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimatingPrNo[*]"
+                    },
+                    {
+                        "label": "Estimate No",
+                        "name": "estimateNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimateNo[*]"
+                    },
+                    {
+                        "label": "Estimate Status",
+                        "name": "estimateStatus",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimateStatus[*]"
+                    },
+                    {
+                        "label": "Estimate Date",
+                        "name": "estimateDate",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimateDate[*]"
+                    },
+                    {
+                        "label": "Req Supplier Bid Date",
+                        "name": "reqSupplierBidDate",
+                        "type": "JSON_PATH",
+                        "value": "$.response.reqSupplierBidDate[*]"
+                    },
+                    {
+                        "label": "Estimate Cost",
+                        "name": "estimateCost",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimateCost[*]"
+                    },
+                    {
+                        "label": "PR No",
+                        "name": "prNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.prNo[*]"
+                    },
+                    {
+                        "label": "PR Date",
+                        "name": "prDate",
+                        "type": "JSON_PATH",
+                        "value": "$.response.prDate[*]"
+                    },
+                    {
+                        "label": "PR Qty",
+                        "name": "prQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.prQty[*]"
+                    },
+                    {
+                        "label": "PR Amount",
+                        "name": "prAmount",
+                        "type": "JSON_PATH",
+                        "value": "$.response.prAmount[*]"
+                    },
+                    {
+                        "label": "PR Approves",
+                        "name": "prApproves",
+                        "type": "JSON_PATH",
+                        "value": "$.response.prApproves[*]"
+                    },
+                    {
+                        "label": "PO No",
+                        "name": "poNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poNo[*]"
+                    },
+                    {
+                        "label": "PO Date",
+                        "name": "poDate",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poDate[*]"
+                    },
+                    {
+                        "label": "PO Quanity",
+                        "name": "poQuanity",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poQuanity[*]"
+                    },
+                    {
+                        "label": "Item Cost",
+                        "name": "itemCost",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemCost[*]"
+                    },
+                    {
+                        "label": "PO Amount",
+                        "name": "poAmount",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poAmount[*]"
+                    },
+                    {
+                        "label": "PO Created By",
+                        "name": "poCreatedBy",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poCreatedBy[*]"
+                    },
+                    {
+                        "label": "PO Supplier Name",
+                        "name": "poSupplierName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poSupplierName[*]"
+                    },
+                    {
+                        "label": "PR Suggester",
+                        "name": "prSuggester",
+                        "type": "JSON_PATH",
+                        "value": "$.response.prSuggester[*]"
+                    },
+                    {
+                        "label": "CAN Request No",
+                        "name": "canRequestNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.canRequestNo[*]"
+                    },
+                    {
+                        "label": "CAN Req URL Addr",
+                        "name": "canReqUrlAddr",
+                        "type": "JSON_PATH",
+                        "value": "$.response.canReqUrlAddr[*]"
+                    },
+                    {
+                        "label": "WIP Entity ID",
+                        "name": "wipEntityId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.wipEntityId[*]"
+                    },
+                    {
+                        "label": "Request Master ID",
+                        "name": "requestMasterId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.requestMasterId[*]"
+                    },
+                    {
+                        "label": "CAN Request Master ID",
+                        "name": "canRequestMasterId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.canRequestMasterId[*]"
+                    },
+                    {
+                        "label": "Instance ID",
+                        "name": "instanceId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.instanceId[*]"
+                    },
+                    {
+                        "label": "Approve Date",
+                        "name": "approveDate",
+                        "type": "JSON_PATH",
+                        "value": "$.response.approveDate[*]"
+                    },
+                    {
+                        "label": "WO Desc",
+                        "name": "woDesc",
+                        "type": "JSON_PATH",
+                        "value": "$.response.woDesc[*]"
+                    },
+                    {
+                        "label": "WO Status",
+                        "name": "woStatus",
+                        "type": "JSON_PATH",
+                        "value": "$.response.woStatus[*]"
+                    },
+                    {
+                        "label": "Auction Header ID",
+                        "name": "auctionHeaderId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.auctionHeaderId[*]"
+                    },
+                    {
+                        "label": "Bid Number",
+                        "name": "bidNumber",
+                        "type": "JSON_PATH",
+                        "value": "$.response.bidNumber[*]"
+                    },
+                    {
+                        "label": "Item Type",
+                        "name": "itemType",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemType[*]"
+                    },
+                    {
+                        "label": "Progress Status Code",
+                        "name": "progressStatusCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.progressStatusCode[*]"
+                    },
+                    {
+                        "label": "Inventory Item ID",
+                        "name": "inventoryItemId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.inventoryItemId[*]"
+                    },
+                    {
+                        "label": "Operation Seq Num",
+                        "name": "operationSeqNum",
+                        "type": "JSON_PATH",
+                        "value": "$.response.operationSeqNum[*]"
+                    },
+                    {
+                        "label": "Attachment",
+                        "name": "attachment",
+                        "type": "JSON_PATH",
+                        "value": "$.response.attachment[*]"
+                    },
+                    {
+                        "label": "SSCS Attachment",
+                        "name": "sscsAttachment",
+                        "type": "JSON_PATH",
+                        "value": "$.response.sscsAttachment[*]"
+                    },
+                    {
+                        "label": "Currency Code",
+                        "name": "currencyCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.currencyCode[*]"
+                    },
+                    {
+                        "label": "Domestic Unit Price",
+                        "name": "domesticUnitPrice",
+                        "type": "JSON_PATH",
+                        "value": "$.response.domesticUnitPrice[*]"
+                    },
+                    {
+                        "label": "PON Status",
+                        "name": "ponStatus",
+                        "type": "JSON_PATH",
+                        "value": "$.response.ponStatus[*]"
+                    },
+                    {
+                        "label": "Purchaser",
+                        "name": "purchaser",
+                        "type": "JSON_PATH",
+                        "value": "$.response.purchaser[*]"
+                    },
+                    {
+                        "label": "KR Purchaser",
+                        "name": "krPurchaser",
+                        "type": "JSON_PATH",
+                        "value": "$.response.krPurchaser[*]"
+                    }
                 ]
             },
             {
                 "name": "match_inventory_data",
-                "label": "Khớp dữ liệu tổng hợp",
+                "label": "Match Aggregated Data",
                 "type": "DATA_MAPPING",
-                "description": "Ghép nối dữ liệu từ RetStockStatusList và update_each_item dựa trên mã Item",
+                "description": "Combine data from RetStockStatusList and StockDetail based on Item code",
                 "inputs": {
                     "sourceA": "$.StockStatusList",
                     "sourceB": "$.StockDetail"
@@ -348,41 +911,71 @@
                     "joinType": "INNER_JOIN",
                     "joinKeys": [
                         {
-                            "leftKey": "inventoryItemId",
-                            "rightKey": "inventoryItemId"
+                            "leftKey": "itemName",
+                            "rightKey": "item"
                         }
                     ]
                 },
                 "extracts": [
                     {
                         "label": "Item Code",
-                        "name": "item",
+                        "name": "itemCode",
                         "type": "JSON_PATH",
-                        "value": "$.sourceA.item"
+                        "value": "$.sourceA.itemName"
                     },
                     {
-                        "label": "Inventory Item ID",
-                        "name": "inventoryItemId",
+                        "label": "Item Name",
+                        "name": "itemName",
                         "type": "JSON_PATH",
-                        "value": "$.sourceA.inventoryItemId"
+                        "value": "$.sourceA.itemDescription"
                     },
                     {
-                        "label": "Item Description",
-                        "name": "description",
-                        "type": "JSON_PATH",
-                        "value": "$.sourceB.description"
+                        "label": "Maker Info",
+                        "name": "makerInfo",
+                        "type": "CALCULATION",
+                        "value": "$.sourceA.maker + ' - ' + $.sourceA.model"
+                    },
+                    {
+                        "label": "Inventory Status",
+                        "name": "inventoryStatus",
+                        "type": "CALCULATION",
+                        "value": "$.sourceA.itemStatus == 'Active' && $.sourceB.availableQuantity > 0 ? 'In Stock' : 'Out of Stock'"
                     },
                     {
                         "label": "Total Onhand Qty",
-                        "name": "totalOnhandQuantity",
+                        "name": "totalOnhandQty",
                         "type": "JSON_PATH",
                         "value": "$.sourceB.onhandQuantity"
                     },
                     {
-                        "label": "Item Status",
-                        "name": "itemStatus",
+                        "label": "Available Qty",
+                        "name": "availableQty",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.availableQuantity"
+                    },
+                    {
+                        "label": "Incoming Qty",
+                        "name": "incomingQty",
                         "type": "CALCULATION",
-                        "value": "$.sourceB.itemStatus = 'Active' && $.sourceA.availableQuantity > 0 ? 'In Stock' : 'Out of Stock'"
+                        "value": "Number($.sourceB.poWaitingQty) + Number($.sourceB.notReceivingQty)"
+                    },
+                    {
+                        "label": "PO Block Status",
+                        "name": "poBlockStatus",
+                        "type": "CALCULATION",
+                        "value": "$.sourceB.stopPo == 'Y' ? 'Blocked' : 'Allowed'"
+                    },
+                    {
+                        "label": "Current Vendor",
+                        "name": "currentVendor",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.vendorName"
+                    },
+                    {
+                        "label": "Need To Order",
+                        "name": "needToOrder",
+                        "type": "CALCULATION",
+                        "value": "Number($.sourceB.availableQuantity) < Number($.sourceB.safetyStockQty) ? 'Yes' : 'No'"
                     }
                 ]
             }

@@ -78,6 +78,7 @@ def build_output_tab(
 def populate_output_table(
     table: QTableWidget,
     rows: List[Dict[str, Any]],
+    column_labels: Dict[str, str] | None = None,
 ) -> None:
     """
     Điền dữ liệu danh sách row-dict vào QTableWidget.
@@ -106,7 +107,8 @@ def populate_output_table(
             if key not in columns:
                 columns.append(key)
     table.setColumnCount(len(columns))
-    table.setHorizontalHeaderLabels(columns)
+    headers = [column_labels.get(col, col) for col in columns] if column_labels else columns
+    table.setHorizontalHeaderLabels(headers)
     table.setRowCount(len(safe_rows))
 
     for r, row in enumerate(safe_rows):

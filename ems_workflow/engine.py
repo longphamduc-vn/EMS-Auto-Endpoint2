@@ -97,14 +97,6 @@ class WorkflowWorker(QThread):
             ds_parts.append(f"{ds.get('id', 'dataset')} rows={row_count} fields={field_names}")
         return "; ".join(ds_parts)
 
-    def _extract_fallback_path(self, path: str) -> Optional[str]:
-        if not path.startswith("$.response.") or not path.endswith("[*]"):
-            return None
-        field_name = path[len("$.response.") : -3]
-        if not field_name:
-            return None
-        return f"$.response[*].{field_name}"
-
     # ------------------------------------------------------------------
     # Dynamic JSONPath value resolution
     # ------------------------------------------------------------------
@@ -138,8 +130,6 @@ class WorkflowWorker(QThread):
                 # Nếu đang trong vòng lặp, lấy phần tử tương ứng
                 if loop_idx is not None and loop_idx < len(single):
                     return single[loop_idx]
-                if loop_idx is not None:
-                    return None
                 return single
             return single
 
@@ -191,10 +181,9 @@ class WorkflowWorker(QThread):
             name = ext.get("name")
             if not name or ext.get("type", "JSON_PATH") != "JSON_PATH":
                 continue
-            path = str(ext.get("value", ""))
-            vals = jsonpath_values(source, path)
-            corrected_path = self._extract_fallback_path(path)
-            if not vals and corrected_path:
+            vals = jsonpath_values(source, ext.get("value", ""))
+            if not vals and 'reponse' in ext.get("value", ""):
+                corrected_path = ext.get("value", "").replace('reponse', 'response')
                 vals = jsonpath_values(source, corrected_path)
 
             # Unwrap list-of-list khi JSONPath trả về [[...]]
@@ -345,7 +334,7 @@ class WorkflowWorker(QThread):
                     )
 
             self.log(
-                f"[DEBUG] HTTP step={step_name} xml_payload_bytes={len(xml_payload)}"
+                f"[DEBUG--] HTTP step={step_name} xml_payload={xml_payload}"
             )
             if step_data is None:
                 resp_xml = self.request_with_retry(method, url, xml_payload)
@@ -398,12 +387,9 @@ class WorkflowWorker(QThread):
         mapping = step.get("mapping", {})
         extracts = normalize_extracts(step.get("extracts"))
 
-        self.log(
-            f"[DEBUG] inputs {inputs} mapping {mapping} extracts={extracts}"
-        )
-        
         src_a = flatten_single(jsonpath_values(context, inputs.get("sourceA", "")))
         src_b = flatten_single(jsonpath_values(context, inputs.get("sourceB", "")))
+
         self.log(
             f"[DEBUG] MAP step={step.get('name', 'mapping')} sourceA_type={type(src_a).__name__} sourceB_type={type(src_b).__name__}"
         )
@@ -419,6 +405,8 @@ class WorkflowWorker(QThread):
             else dict_of_lists_to_records(src_b) if isinstance(src_b, dict)
             else []
         )
+
+       
 
         join_type = mapping.get("joinType", "INNER_JOIN")
         join_keys = mapping.get("joinKeys", [])

@@ -110,56 +110,68 @@ def payload_to_nexacro_xml(payload: Dict[str, Any]) -> bytes:
 # Nexacro XML response  →  JSON nội bộ
 # ---------------------------------------------------------------------------
 
+import xml.etree.ElementTree as ET
+from typing import Dict, Any
+
 def nexacro_xml_to_json(xml_text: str) -> Dict[str, Any]:
-    """
-    Parse XML response Nexacro thành dict JSON nội bộ để các bước extracts
-    có thể dùng JSONPath như $.response.itemName[*] truy vấn.
+    # Loại bỏ namespace để dễ truy vấn (hoặc định nghĩa namespace)
+    # Nexacro thường dùng xmlns="http://www.nexacroplatform.com/platform/dataset"
+    root = ET.fromstring(xml_text)
+    ns = {'ns': 'http://www.nexacroplatform.com/platform/dataset'}
 
-    Cấu trúc XML đầu vào (ví dụ):
-      <Root>
-        <Dataset id="ds_output">
-          <Rows>
-            <Row><Col id="itemName">Panel A</Col></Row>
-            <Row><Col id="itemName">Panel B</Col></Row>
-          </Rows>
-        </Dataset>
-      </Root>
+    result = {
+        "parameters": {},
+        "response": {}
+    }
 
-    Cấu trúc JSON đầu ra:
-      {
-        "response": {"itemName": ["Panel A", "Panel B"], ...},
-        "datasets": {"ds_output": [{"itemName": "Panel A"}, ...]},
-        "items":    [{"itemName": "Panel A"}, {"itemName": "Panel B"}]
-      }
+    # 1. Xử lý Parameters
+    parameters_node = root.find('ns:Parameters', ns)
+    if parameters_node is not None:
+        for param in parameters_node.findall('ns:Parameter', ns):
+            p_id = param.get('id')
+            p_value = param.text if param.text else ""
+            # Chuyển kiểu dữ liệu cơ bản nếu cần
+            p_type = param.get('type')
+            if p_type == 'int' and p_value:
+                p_value = int(p_value)
+            result["parameters"][p_id] = p_value
 
-    Ghi chú: key "response" (typo) được giữ nguyên để khớp với
-    JSONPath expressions đã định nghĩa trong workflow config.
-    """
-    output: Dict[str, Any] = {"response": {}, "datasets": {}, "items": []}
-    try:
-        root = fromstring(xml_text)
-    except Exception:
-        return output
+    # 2. Xử lý tất cả các Dataset
+    for dataset in root.findall('ns:Dataset', ns):
+        rows_data = []
+        rows_node = dataset.find('ns:Rows', ns)
+        
+        if rows_node is not None:
+            for row in rows_node.findall('ns:Row', ns):
+                row_dict = {}
+                for col in row.findall('ns:Col', ns):
+                    col_id = col.get('id')
+                    row_dict[col_id] = col.text if col.text is not None else ""
+                rows_data.append(row_dict)
+        
+        # Gộp dữ liệu vào 'response'
+        # Nếu bạn muốn gộp tất cả các cột của các dataset vào chung response:
+        if rows_data:
+            # Lấy record đầu tiên hoặc tất cả record tùy vào logic của bạn
+            # Ở đây tôi đưa toàn bộ list record vào key của Dataset ID (ví dụ: ds_Item)
+            # Hoặc gộp phẳng các field vào response theo yêu cầu của bạn:
+            for record in rows_data:
+                for key, value in record.items():
+                    if key not in result["response"]:
+                        result["response"][key] = []
+                    result["response"][key].append(value)
+        else:
+            # Xử lý trường hợp Row trống nhưng có ColumnInfo
+            col_info = dataset.find('ns:ColumnInfo', ns)
+            if col_info is not None:
+                for col in col_info.findall('ns:Column', ns):
+                    c_id = col.get('id')
+                    if c_id not in result["response"]:
+                        result["response"][c_id] = []
 
-    all_rows: List[Dict[str, Any]] = []
+    return result
 
-    for ds in root.findall(".//Dataset"):
-        ds_id = ds.attrib.get("id", "dataset")
-        ds_rows: List[Dict[str, Any]] = []
-
-        for row in ds.findall(".//Rows/Row"):
-            row_data: Dict[str, Any] = {}
-            for col in row.findall("Col"):
-                key = col.attrib.get("id", "")
-                val = (col.text or "").strip()
-                row_data[key] = val
-                # Tích lũy vào response dưới dạng columnar (list per field)
-                output["response"].setdefault(key, []).append(val)
-            if row_data:
-                ds_rows.append(row_data)
-                all_rows.append(row_data)
-
-        output["datasets"][ds_id] = ds_rows
-
-    output["items"] = all_rows
-    return output
+# --- Test thử với dữ liệu của bạn ---
+# json_data = nexacro_xml_to_json(xml_input)
+# import json
+# print(json.dumps(json_data, indent=4, ensure_ascii=False))

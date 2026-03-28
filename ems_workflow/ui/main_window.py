@@ -291,6 +291,14 @@ class WorkflowApp(QMainWindow):
                 return str(step.get("type", ""))
         return ""
 
+    def _get_step_config(self, step_name: str) -> Optional[Dict[str, Any]]:
+        if not self.current_task:
+            return None
+        for step in self.current_task.get("steps", []):
+            if step.get("name") == step_name:
+                return step
+        return None
+
     def _on_step_completed(
         self, step_name: str, data: Dict[str, Any], cache_used: bool
     ) -> None:
@@ -343,7 +351,15 @@ class WorkflowApp(QMainWindow):
         self._log(
             f"[DEBUG] step={step_name} rows_ready={len(rows)} first_row_type={preview_type}"
         )
-        populate_output_table(table, rows)
+        step_cfg = self._get_step_config(step_name) or {}
+        label_map: Dict[str, str] = {}
+        for ext in step_cfg.get("extracts", []) or []:
+            name = ext.get("name")
+            label = ext.get("label")
+            if isinstance(name, str) and name and isinstance(label, str) and label:
+                label_map[name] = label
+
+        populate_output_table(table, rows, label_map)
 
         if step_name in self.cache_checks:
             self.cache_checks[step_name].setChecked(cache_used)

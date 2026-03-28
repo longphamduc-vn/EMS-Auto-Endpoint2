@@ -66,6 +66,18 @@ class WorkflowRegressionTests(unittest.TestCase):
         self.assertEqual(table.item(0, 0).text(), "1")
         self.assertEqual(table.item(1, 1).text(), "2")
 
+    def test_populate_output_table_prefers_label_headers(self) -> None:
+        table = QTableWidget()
+
+        populate_output_table(
+            table,
+            [{"inventoryItemId": "INV1001", "itemName": "Q001"}],
+            {"inventoryItemId": "Item ID", "itemName": "Q Code"},
+        )
+
+        headers = [table.horizontalHeaderItem(i).text() for i in range(table.columnCount())]
+        self.assertEqual(headers, ["Item ID", "Q Code"])
+
     @staticmethod
     def _cell(value: str):
         from PyQt6.QtWidgets import QTableWidgetItem
