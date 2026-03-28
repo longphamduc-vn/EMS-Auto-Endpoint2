@@ -601,4 +601,64 @@
                         "label": "[PO] PO Amount",
                         "name": "poAmount",
                         "type": "CALCULATION",
-                        "value
+                        "value": "Array.isArray($.sourceD.poAmount) ? [...new Set($.sourceD.poAmount)].filter(Boolean).join(', ') : $.sourceD.poAmount"
+                    },
+                    {
+                        "label": "[PO] PO Date",
+                        "name": "poDate",
+                        "type": "CALCULATION",
+                        "value": "Array.isArray($.sourceD.poDate) ? [...new Set($.sourceD.poDate)].filter(Boolean).join(', ') : $.sourceD.poDate"
+                    }
+                ],
+                "styles": {
+                    "rows": [
+                        {
+                            "when": {
+                                "field": "inventoryStatus",
+                                "operator": "eq",
+                                "value": "Out of Stock"
+                            },
+                            "background": "#fff1f2"
+                        },
+                        {
+                            "when": {
+                                "field": "poBlockStatus",
+                                "operator": "eq",
+                                "value": "Blocked"
+                            },
+                            "background": "#fff7ed"
+                        }
+                    ],
+                    "columns": [
+                        {
+                            "field": "totalOnhandQty",
+                            "alignment": "right"
+                        },
+                        {
+                            "field": "availableQty",
+                            "alignment": "right",
+                            "foreground": "#059669",
+                            "fontWeight": "bold"
+                        },
+                        {
+                            "field": "incomingQty",
+                            "alignment": "right"
+                        },
+                        {
+                            "field": "unitPricePo",
+                            "alignment": "right"
+                        },
+                        {
+                            "field": "estimateCost",
+                            "alignment": "right"
+                        },
+                        {
+                            "field": "poAmount",
+                            "alignment": "right"
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+]
