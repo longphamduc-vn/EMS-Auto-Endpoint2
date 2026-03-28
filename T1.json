@@ -1,0 +1,604 @@
+[
+    {
+        "name": "ItemStatus",
+        "label": "Item Status",
+        "description": "Item status and inventory tracking workflow",
+        "parameters": {
+            "session": {
+                "organizationId": "28753",
+                "itemCond": "Y",
+                "optimizeFlag": "Y",
+                "optimizedApplyDate": "20210316"
+            }
+        },
+        "steps": [
+            {
+                "name": "input_items",
+                "label": "Input Shipment Information",
+                "type": "INPUT",
+                "fields": [
+                    {
+                        "label": "Q code",
+                        "name": "items"
+                    }
+                ]
+            },
+            {
+                "name": "StockStatusList",
+                "label": "Stock Status",
+                "type": "HTTP_REQUEST",
+                "loopOver": null,
+                "cache": false,
+                "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp110Nav/RetStockStatusList.lgdn",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "$.session.__ems_userId",
+                        "_ems_organizationId": "$.session.__ems_organizationId"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_search",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "$.session.organizationId"
+                                },
+                                {
+                                    "name": "itemCond",
+                                    "value": "$.session.itemCond"
+                                },
+                                {
+                                    "name": "optimizedApplyDate",
+                                    "value": "$.session.optimizedApplyDate"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "ds_ItemInfo",
+                            "fields": [
+                                {
+                                    "name": "item",
+                                    "value": "$.input_items.items[*]"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Date",
+                        "name": "date",
+                        "type": "CALCULATION",
+                        "value": "1"
+                    },
+                    {
+                        "label": "Item ID",
+                        "name": "inventoryItemId",
+                        "type": "JSON_PATH",
+                        "value": "$.response.inventoryItemId[*]"
+                    },
+                    {
+                        "label": "Q Code",
+                        "name": "itemName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemName[*]"
+                    },
+                    {
+                        "label": "Item Description",
+                        "name": "itemDescription",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemDescription[*]"
+                    },
+                    {
+                        "label": "Item Status",
+                        "name": "itemStatus",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemStatus[*]"
+                    },
+                    {
+                        "label": "UOM Code",
+                        "name": "uomCode",
+                        "type": "JSON_PATH",
+                        "value": "$.response.uomCode[*]"
+                    },
+                    {
+                        "label": "Catalog Group",
+                        "name": "catalogGroupName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.catalogGroupName[*]"
+                    },
+                    {
+                        "label": "Maker",
+                        "name": "maker",
+                        "type": "JSON_PATH",
+                        "value": "$.response.maker[*]"
+                    },
+                    {
+                        "label": "Model",
+                        "name": "model",
+                        "type": "JSON_PATH",
+                        "value": "$.response.model[*]"
+                    },
+                    {
+                        "label": "Item Spec",
+                        "name": "itemSpec",
+                        "type": "JSON_PATH",
+                        "value": "$.response.itemSpec[*]"
+                    },
+                    {
+                        "label": "Red Flag",
+                        "name": "redFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.redFlag[*]"
+                    },
+                    {
+                        "label": "FDM URL",
+                        "name": "fdmUrl",
+                        "type": "JSON_PATH",
+                        "value": "$.response.fdmUrl[*]"
+                    }
+                ],
+                "styles": {
+                    "rows": [
+                        {
+                            "when": {
+                                "field": "itemStatus",
+                                "operator": "eq",
+                                "value": "Inactive"
+                            },
+                            "background": "#fff1f2"
+                        }
+                    ],
+                    "columns": [
+                        {
+                            "field": "inventoryItemId",
+                            "alignment": "right"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "StockDetail",
+                "label": "Stock Detail",
+                "type": "HTTP_REQUEST",
+                "loopOver": "$.StockStatusList.inventoryItemId",
+                "cache": false,
+                "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp102/sp135Nav/retrieveItemInfoDetail.lgdn",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "$.session.auth_token",
+                        "_ems_organizationId": "$.session.auth_token",
+                        "_ems_language": "$.session.auth_token"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_Input",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "$.session.organizationId"
+                                },
+                                {
+                                    "name": "inventoryItemId",
+                                    "source": "$.StockStatusList.inventoryItemId"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Item",
+                        "name": "item",
+                        "type": "JSON_PATH",
+                        "value": "$.response.item[*]"
+                    },
+                    {
+                        "label": "Onhand Qty",
+                        "name": "onhandQuantity",
+                        "type": "JSON_PATH",
+                        "value": "$.response.onhandQuantity[*]"
+                    },
+                    {
+                        "label": "Available Qty",
+                        "name": "availableQuantity",
+                        "type": "JSON_PATH",
+                        "value": "$.response.availableQuantity[*]"
+                    },
+                    {
+                        "label": "Vendor Name",
+                        "name": "vendorName",
+                        "type": "JSON_PATH",
+                        "value": "$.response.vendorName[*]"
+                    },
+                    {
+                        "label": "Unit Price PO",
+                        "name": "unitPricePo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.unitPricePo[*]"
+                    },
+                    {
+                        "label": "Stop PO",
+                        "name": "stopPo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.stopPo[*]"
+                    },
+                    {
+                        "label": "Safety Stock Qty",
+                        "name": "safetyStockQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.safetyStockQty[*]"
+                    },
+                    {
+                        "label": "PO Waiting Qty",
+                        "name": "poWaitingQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poWaitingQty[*]"
+                    },
+                    {
+                        "label": "Not Receiving Qty",
+                        "name": "notReceivingQty",
+                        "type": "JSON_PATH",
+                        "value": "$.response.notReceivingQty[*]"
+                    }
+                ]
+            },
+            {
+                "name": "PoStatusCheck",
+                "label": "PO Status Check",
+                "type": "HTTP_REQUEST",
+                "loopOver": "$.StockStatusList.inventoryItemId",
+                "cache": false,
+                "url": "http://ems.lgdisplay.com:9000/emscom/popupNav/retrieveItemPoStatusList.lgdn",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "658359",
+                        "_ems_organizationId": "$.session.organizationId",
+                        "_ems_language": "EN"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_Search",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "$.session.organizationId"
+                                },
+                                {
+                                    "name": "invItemList",
+                                    "source": "$.StockStatusList.inventoryItemId"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Item",
+                        "name": "item",
+                        "type": "JSON_PATH",
+                        "value": "$.response.item[*]"
+                    },
+                    {
+                        "label": "Disuse Inventory Flag",
+                        "name": "disuseInventoryFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.disuseInventoryFlag[*]"
+                    },
+                    {
+                        "label": "Aging Interlock Flag",
+                        "name": "agingInterlockFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.agingInterlockFlag[*]"
+                    },
+                    {
+                        "label": "Unit Price Flag",
+                        "name": "unitPriceFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.unitPriceFlag[*]"
+                    },
+                    {
+                        "label": "Stop PO Flag",
+                        "name": "stopPoFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.stopPoFlag[*]"
+                    },
+                    {
+                        "label": "Apply Flag",
+                        "name": "applyFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.applyFlag[*]"
+                    },
+                    {
+                        "label": "Wait Repair Flag",
+                        "name": "waitRepairFlag",
+                        "type": "JSON_PATH",
+                        "value": "$.response.waitRepairFlag[*]"
+                    }
+                ]
+            },
+            {
+                "name": "EstimateHistory",
+                "label": "Estimate History",
+                "type": "HTTP_REQUEST",
+                "loopOver": null,
+                "cache": false,
+                "accumulation": "$.accumulated_data.ItemStatus.EstimateHistory[?(@.item in $.StockDetail[*].item )]",
+                "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp120Nav/RetEstimateRequestList.lgdn",
+                "method": "POST",
+                "payload": {
+                    "parameters": {
+                        "_ems_userId": "658359",
+                        "_ems_organizationId": "$.session.organizationId",
+                        "_ems_language": "EN"
+                    },
+                    "datasets": [
+                        {
+                            "id": "ds_Search",
+                            "fields": [
+                                {
+                                    "name": "organizationId",
+                                    "value": "28753"
+                                },
+                                {
+                                    "name": "itemType",
+                                    "value": "Q"
+                                },
+                                {
+                                    "name": "estimateRequestDateFrom",
+                                    "value": "20250301"
+                                },
+                                {
+                                    "name": "estimateRequestDateTo",
+                                    "value": "20260327"
+                                },
+                                {
+                                    "name": "userId",
+                                    "value": "658359"
+                                },
+                                {
+                                    "name": "itemYn",
+                                    "value": "Y"
+                                }
+                            ]
+                        },
+                        {
+                            "id": "ds_ItemInfo",
+                            "fields": [
+                                {
+                                    "name": "item",
+                                    "value": "$.input_items.items[*]"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "Date Accumulated",
+                        "name": "dateAccumulated",
+                        "type": "CALCULATION",
+                        "value": "datetime.datetime.now()"
+                    },
+                    {
+                        "label": "Item",
+                        "name": "item",
+                        "type": "JSON_PATH",
+                        "value": "$.response.item[*]"
+                    },
+                    {
+                        "label": "Estimate No",
+                        "name": "estimateNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimateNo[*]"
+                    },
+                    {
+                        "label": "Estimate Cost",
+                        "name": "estimateCost",
+                        "type": "JSON_PATH",
+                        "value": "$.response.estimateCost[*]"
+                    },
+                    {
+                        "label": "PO No",
+                        "name": "poNo",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poNo[*]"
+                    },
+                    {
+                        "label": "PO Date",
+                        "name": "poDate",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poDate[*]"
+                    },
+                    {
+                        "label": "PO Amount",
+                        "name": "poAmount",
+                        "type": "JSON_PATH",
+                        "value": "$.response.poAmount[*]"
+                    },
+                    {
+                        "label": "Domestic Unit Price",
+                        "name": "domesticUnitPrice",
+                        "type": "JSON_PATH",
+                        "value": "$.response.domesticUnitPrice[*]"
+                    }
+                ]
+            },
+            {
+                "name": "match_inventory_data",
+                "label": "Match Aggregated Data",
+                "type": "DATA_MAPPING",
+                "description": "Combine data, format flags, remove duplicates for Estimate, and apply conditional styling.",
+                "inputs": {
+                    "sourceA": "$.StockStatusList",
+                    "sourceB": "$.StockDetail",
+                    "sourceC": "$.PoStatusCheck",
+                    "sourceD": "$.EstimateHistory"
+                },
+                "mapping": {
+                    "joinType": "LEFT_JOIN",
+                    "joinKeys": [
+                        {
+                            "leftKey": "itemName",
+                            "rightKey": "item",
+                            "rightSource": "sourceB"
+                        },
+                        {
+                            "leftKey": "itemName",
+                            "rightKey": "item",
+                            "rightSource": "sourceC"
+                        },
+                        {
+                            "leftKey": "itemName",
+                            "rightKey": "item",
+                            "rightSource": "sourceD"
+                        }
+                    ]
+                },
+                "extracts": [
+                    {
+                        "label": "[QCode] Item Code",
+                        "name": "itemCode",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceA.itemName"
+                    },
+                    {
+                        "label": "[QCode] Item Name",
+                        "name": "itemName",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceA.itemDescription"
+                    },
+                    {
+                        "label": "[QCode] Maker Info",
+                        "name": "makerInfo",
+                        "type": "CALCULATION",
+                        "value": "$.sourceA.maker + ' - ' + $.sourceA.model"
+                    },
+                    {
+                        "label": "[QCode] UOM",
+                        "name": "uomCode",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceA.uomCode"
+                    },
+                    {
+                        "label": "[Status] Inventory Status",
+                        "name": "inventoryStatus",
+                        "type": "CALCULATION",
+                        "value": "$.sourceA.itemStatus == 'Active' && $.sourceB.availableQuantity > 0 ? 'In Stock' : 'Out of Stock'"
+                    },
+                    {
+                        "label": "[Status] Disuse Flag",
+                        "name": "disuseInventoryFlag",
+                        "type": "CALCULATION",
+                        "value": "$.sourceC.disuseInventoryFlag == 'Y' ? 'Y' : ''"
+                    },
+                    {
+                        "label": "[Status] Aging Interlock Flag",
+                        "name": "agingInterlockFlag",
+                        "type": "CALCULATION",
+                        "value": "$.sourceC.agingInterlockFlag == 'Y' ? 'Y' : ''"
+                    },
+                    {
+                        "label": "[Status] Unit Price Flag",
+                        "name": "unitPriceFlag",
+                        "type": "CALCULATION",
+                        "value": "$.sourceC.unitPriceFlag == 'Y' ? 'Y' : ''"
+                    },
+                    {
+                        "label": "[Status] Wait Repair Flag",
+                        "name": "waitRepairFlag",
+                        "type": "CALCULATION",
+                        "value": "$.sourceC.waitRepairFlag == 'Y' ? 'Y' : ''"
+                    },
+                    {
+                        "label": "[Status] Apply Flag",
+                        "name": "applyFlag",
+                        "type": "CALCULATION",
+                        "value": "$.sourceC.applyFlag == 'Y' ? 'Y' : ''"
+                    },
+                    {
+                        "label": "[Price] Unit Price PO",
+                        "name": "unitPricePo",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.unitPricePo"
+                    },
+                    {
+                        "label": "[Price] Estimate No",
+                        "name": "estimateNo",
+                        "type": "CALCULATION",
+                        "value": "Array.isArray($.sourceD.estimateNo) ? [...new Set($.sourceD.estimateNo)].filter(Boolean).join(', ') : $.sourceD.estimateNo"
+                    },
+                    {
+                        "label": "[Price] Estimate Cost",
+                        "name": "estimateCost",
+                        "type": "CALCULATION",
+                        "value": "Array.isArray($.sourceD.estimateCost) ? [...new Set($.sourceD.estimateCost)].filter(Boolean).join(', ') : $.sourceD.estimateCost"
+                    },
+                    {
+                        "label": "[Price] Domestic Unit Price",
+                        "name": "domesticUnitPrice",
+                        "type": "CALCULATION",
+                        "value": "Array.isArray($.sourceD.domesticUnitPrice) ? [...new Set($.sourceD.domesticUnitPrice)].filter(Boolean).join(', ') : $.sourceD.domesticUnitPrice"
+                    },
+                    {
+                        "label": "[Price] Date Accumulated",
+                        "name": "dateAccumulated",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceD.dateAccumulated"
+                    },
+                    {
+                        "label": "[Inventory] Total Onhand Qty",
+                        "name": "totalOnhandQty",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.onhandQuantity"
+                    },
+                    {
+                        "label": "[Inventory] Available Qty",
+                        "name": "availableQty",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.availableQuantity"
+                    },
+                    {
+                        "label": "[Inventory] Incoming Qty",
+                        "name": "incomingQty",
+                        "type": "CALCULATION",
+                        "value": "Number($.sourceB.poWaitingQty || 0) + Number($.sourceB.notReceivingQty || 0)"
+                    },
+                    {
+                        "label": "[Inventory] Safety Stock",
+                        "name": "safetyStockQty",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.safetyStockQty"
+                    },
+                    {
+                        "label": "[PO] Current Vendor",
+                        "name": "vendorName",
+                        "type": "JSON_PATH",
+                        "value": "$.sourceB.vendorName"
+                    },
+                    {
+                        "label": "[PO] PO Block Status",
+                        "name": "poBlockStatus",
+                        "type": "CALCULATION",
+                        "value": "$.sourceB.stopPo == 'Y' ? 'Blocked' : 'Allowed'"
+                    },
+                    {
+                        "label": "[PO] Stop PO Flag",
+                        "name": "stopPoFlag",
+                        "type": "CALCULATION",
+                        "value": "$.sourceC.stopPoFlag == 'Y' ? 'Y' : ''"
+                    },
+                    {
+                        "label": "[PO] PO Number",
+                        "name": "poNo",
+                        "type": "CALCULATION",
+                        "value": "Array.isArray($.sourceD.poNo) ? [...new Set($.sourceD.poNo)].filter(Boolean).join(', ') : $.sourceD.poNo"
+                    },
+                    {
+                        "label": "[PO] PO Amount",
+                        "name": "poAmount",
+                        "type": "CALCULATION",
+                        "value
