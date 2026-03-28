@@ -9,7 +9,8 @@ from PyQt6.QtWidgets import QApplication, QTableWidget
 
 from ems_workflow.engine import WorkflowWorker
 from ems_workflow.ui.input_tab import InputTableWidget, fill_input_table
-from ems_workflow.ui.output_tab import populate_output_table
+from ems_workflow.ui.output_tab import copy_table_to_clipboard, populate_output_table
+from ems_workflow.utils import load_json, save_json
 
 
 class WorkflowRegressionTests(unittest.TestCase):
@@ -193,6 +194,24 @@ class WorkflowRegressionTests(unittest.TestCase):
         self.assertEqual(table.item(0, 0).text(), "NEW")
         self.assertIsNone(table.item(1, 0))
 
+    def test_input_paste_skips_header_row_from_output_copy(self) -> None:
+        table = InputTableWidget(5, 1)
+        table.setHorizontalHeaderLabels(["Q code"])
+        QApplication.clipboard().setText("Q code\nQ001\nQ002")
+
+        table._paste_from_clipboard()
+
+        self.assertEqual(table.item(0, 0).text(), "Q001")
+        self.assertEqual(table.item(1, 0).text(), "Q002")
+
+    def test_fill_input_table_accepts_scalar_values(self) -> None:
+        step = {"fields": [{"name": "items", "label": "Item"}]}
+        table = InputTableWidget(5, 1)
+
+        fill_input_table(step, table, {"items": "Q001"})
+
+        self.assertEqual(table.item(0, 0).text(), "Q001")
+
     def test_populate_output_table_uses_union_of_columns(self) -> None:
         table = QTableWidget()
 
@@ -214,6 +233,156 @@ class WorkflowRegressionTests(unittest.TestCase):
 
         headers = [table.horizontalHeaderItem(i).text() for i in range(table.columnCount())]
         self.assertEqual(headers, ["Item ID", "Q Code"])
+
+    def test_copy_table_to_clipboard_includes_headers(self) -> None:
+        table = QTableWidget()
+        populate_output_table(table, [{"item": "Q001", "qty": 3}])
+
+        copied = copy_table_to_clipboard(table, include_headers=True, selection_only=False)
+
+        self.assertTrue(copied)
+        self.assertEqual(QApplication.clipboard().text(), "item\tqty\nQ001\t3")
+
+    def test_populate_output_table_applies_row_and_column_styles(self) -> None:
+        table = QTableWidget()
+
+        populate_output_table(
+            table,
+            [{"item": "Q001", "status": "RED", "qty": 3}],
+            style_rules={
+                "rows": [
+                    {
+                        "when": {"field": "status", "operator": "eq", "value": "RED"},
+                        "background": "#fff1f2",
+                    }
+                ],
+                "columns": [
+                    {
+                        "field": "qty",
+                        "foreground": "#1d4ed8",
+                        "fontWeight": "bold",
+                        "alignment": "right",
+                    }
+                ],
+            },
+        )
+
+        status_item = table.item(0, 1)
+        qty_item = table.item(0, 2)
+
+        self.assertEqual(status_item.background().color().name(), "#fff1f2")
+        self.assertEqual(qty_item.foreground().color().name(), "#1d4ed8")
+        self.assertTrue(qty_item.font().bold())
+
+    def test_run_transform_step_supports_complex_pipeline(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            save_json(
+                os.path.join(temp_dir, "accumulated_data.json"),
+                {
+                    "EstimateHistory": [
+                        {"item": "Q001", "factory": "M1", "requestComment": "A"},
+                        {"item": "Q001", "factory": "M1", "requestComment": "B"},
+                        {"item": "Q002", "factory": "M2", "requestComment": "C"},
+                    ]
+                },
+            )
+            worker = WorkflowWorker({"name": "ItemStatus", "steps": []}, {}, temp_dir)
+            context = {
+                "StockDetail": {"item": ["Q001", "Q002"]},
+                "PoStatusCheck": [
+                    {"item": "Q001", "inventoryItemStatusCode": "ACTIVE"},
+                    {"item": "Q002", "inventoryItemStatusCode": "HOLD"},
+                ],
+            }
+            step = {
+                "name": "ComplexSummary",
+                "type": "DATA_TRANSFORM",
+                "transforms": [
+                    {
+                        "type": "ACCUMULATE",
+                        "mode": "load",
+                        "source": "$.accumulated_data.ItemStatus.EstimateHistory[?(@.item in $.StockDetail[*].item )]",
+                    },
+                    {
+                        "type": "MERGE",
+                        "rightSource": "$.PoStatusCheck",
+                        "joinKeys": [{"leftKey": "item", "rightKey": "item"}],
+                        "leftPrefix": "hist.",
+                        "rightPrefix": "po.",
+                    },
+                    {
+                        "type": "DUPLICATE",
+                        "field": "hist.factory",
+                        "targetField": "factoryCopy",
+                    },
+                    {
+                        "type": "GROUP BY",
+                        "keys": ["hist.item", "po.inventoryItemStatusCode", "factoryCopy"],
+                        "aggregations": [
+                            {"field": "hist.requestComment", "op": "count", "target": "requestCount"}
+                        ],
+                    },
+                    {
+                        "type": "ACCUMULATE",
+                        "target": "ComplexSummaryStore",
+                    },
+                    {
+                        "type": "PIVOT",
+                        "index": ["hist.item", "factoryCopy"],
+                        "columnField": "po.inventoryItemStatusCode",
+                        "valueField": "requestCount",
+                        "aggregator": "sum",
+                        "fillValue": 0,
+                    },
+                    {
+                        "type": "SORT",
+                        "keys": [{"field": "hist.item", "direction": "asc"}],
+                    },
+                ],
+            }
+
+            result = worker.run_transform_step(step, context)
+            rows = worker._records_from_step_data(result)
+            stored = load_json(os.path.join(temp_dir, "accumulated_data.json"), {})
+
+            self.assertEqual(
+                rows,
+                [
+                    {"hist.item": "Q001", "factoryCopy": "M1", "ACTIVE": 2, "HOLD": 0},
+                    {"hist.item": "Q002", "factoryCopy": "M2", "ACTIVE": 0, "HOLD": 1},
+                ],
+            )
+            self.assertEqual(len(stored["ComplexSummaryStore"]), 2)
+
+    def test_is_no_data_response_not_limited_to_minus_one(self) -> None:
+        worker = self.make_worker()
+
+        self.assertTrue(worker._is_no_data_response(-1, "데이터 없음 -"))
+        self.assertTrue(worker._is_no_data_response(999, "데이터 없음 -"))
+        self.assertTrue(worker._is_no_data_response(12, "No data found"))
+
+    def test_response_error_info_reads_common_variants(self) -> None:
+        worker = self.make_worker()
+
+        code, msg = worker._response_error_info(
+            {"parameters": {"errorCode": "-5", "errorMsg": "some error"}}
+        )
+
+        self.assertEqual(code, -5)
+        self.assertEqual(msg, "some error")
+
+    def test_response_with_data_is_not_treated_as_no_data(self) -> None:
+        worker = self.make_worker()
+        parsed_response = {
+            "parameters": {"errorCode": 1, "errorMsg": ""},
+            "response": {"itemName": ["Q001"], "inventoryItemId": ["123"]},
+        }
+
+        response_has_data = worker._response_has_data(parsed_response)
+        is_no_data = worker._is_no_data_response(1, "")
+
+        self.assertTrue(response_has_data)
+        self.assertFalse(is_no_data and not response_has_data)
 
     @staticmethod
     def _cell(value: str):

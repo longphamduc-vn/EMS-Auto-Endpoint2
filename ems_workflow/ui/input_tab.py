@@ -46,8 +46,23 @@ class InputTableWidget(QTableWidget):
             return
 
         rows = [r for r in text.splitlines() if r.strip()]
+        if not rows:
+            return
+
         start_row = max(self.currentRow(), 0)
         start_col = max(self.currentColumn(), 0)
+
+        # Tương thích với dữ liệu copy từ output table có kèm header.
+        first_cells = [cell.strip() for cell in rows[0].split("\t")]
+        expected_headers: List[str] = []
+        for col_idx in range(start_col, min(self.columnCount(), start_col + len(first_cells))):
+            header_item = self.horizontalHeaderItem(col_idx)
+            expected_headers.append(header_item.text().strip() if header_item else "")
+
+        if expected_headers and first_cells[: len(expected_headers)] == expected_headers:
+            rows = rows[1:]
+            if not rows:
+                return
 
         for i, row_text in enumerate(rows):
             cells = row_text.split("\t")
@@ -99,7 +114,9 @@ def fill_input_table(
     table.clearContents()
 
     for c, key in enumerate(col_map):
-        for r, val in enumerate(data.get(key, [])):
+        raw_values = data.get(key, [])
+        values = raw_values if isinstance(raw_values, list) else [raw_values]
+        for r, val in enumerate(values):
             table.setItem(r, c, QTableWidgetItem(str(val)))
 
 

@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -163,6 +164,281 @@ def records_to_dict_of_lists(rows: List[Dict[str, Any]]) -> Dict[str, List[Any]]
         for key in columns
     }
 
+
+def rows_from_any(data: Any) -> List[Dict[str, Any]]:
+    """Chuẩn hoá dữ liệu bất kỳ thành danh sách row-dicts."""
+    if isinstance(data, list):
+        rows: List[Dict[str, Any]] = []
+        for item in data:
+            if isinstance(item, dict):
+                rows.append(item)
+            else:
+                rows.append({"value": item})
+        return rows
+
+    if isinstance(data, dict):
+        if isinstance(data.get("items"), list) and all(
+            isinstance(item, dict) for item in data.get("items", [])
+        ):
+            return list(data["items"])
+        return dict_of_lists_to_records(data)
+
+    if data is None:
+        return []
+
+    return [{"value": data}]
+
+
+def get_value_by_path(data: Dict[str, Any], path: str, default: Any = None) -> Any:
+    """Đọc giá trị theo field path dạng a.b.c; ưu tiên exact key nếu có."""
+    if not path:
+        return default
+    if isinstance(data, dict) and path in data:
+        return data[path]
+
+    current: Any = data
+    for part in path.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return default
+    return default if current is None else current
+
+
+def merge_record_sets(
+    left_records: List[Dict[str, Any]],
+    right_records: List[Dict[str, Any]],
+    join_keys: List[Dict[str, str]],
+    join_type: str = "INNER_JOIN",
+    left_prefix: str = "left.",
+    right_prefix: str = "right.",
+) -> List[Dict[str, Any]]:
+    """Join hai tập row và flatten field của hai bên ra cùng một record."""
+    normalized_join_type = str(join_type or "INNER_JOIN").upper()
+    if not join_keys:
+        return []
+
+    def build_key(row: Dict[str, Any], side: str) -> Tuple[Any, ...]:
+        key_parts: List[Any] = []
+        for key_map in join_keys:
+            field_name = key_map.get("leftKey") if side == "left" else key_map.get("rightKey")
+            key_parts.append(get_value_by_path(row, str(field_name or "")))
+        return tuple(key_parts)
+
+    right_index: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = {}
+    for right in right_records:
+        right_index.setdefault(build_key(right, "right"), []).append(right)
+
+    matched_right_ids: set[int] = set()
+    merged: List[Dict[str, Any]] = []
+
+    def flatten_row(
+        left_row: Optional[Dict[str, Any]],
+        right_row: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        combined: Dict[str, Any] = {}
+        if isinstance(left_row, dict):
+            for key, value in left_row.items():
+                target_key = f"{left_prefix}{key}" if left_prefix else key
+                combined[target_key] = value
+        if isinstance(right_row, dict):
+            for key, value in right_row.items():
+                target_key = f"{right_prefix}{key}" if right_prefix else key
+                if target_key in combined:
+                    target_key = f"right.{key}"
+                combined[target_key] = value
+        return combined
+
+    for left in left_records:
+        key = build_key(left, "left")
+        matches = right_index.get(key, [])
+        if matches:
+            for right in matches:
+                merged.append(flatten_row(left, right))
+                matched_right_ids.add(id(right))
+        elif normalized_join_type in {"LEFT_JOIN", "LEFT", "FULL_JOIN", "OUTER_JOIN", "OUTER"}:
+            merged.append(flatten_row(left, None))
+
+    if normalized_join_type in {"RIGHT_JOIN", "RIGHT", "FULL_JOIN", "OUTER_JOIN", "OUTER"}:
+        for right in right_records:
+            if id(right) not in matched_right_ids:
+                merged.append(flatten_row(None, right))
+
+    return merged
+
+
+def duplicate_rows(
+    rows: List[Dict[str, Any]],
+    *,
+    copies: Optional[List[Dict[str, Any]]] = None,
+    times: int = 1,
+    distinct_keys: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Hỗ trợ duplicate field, nhân bản row hoặc loại row trùng theo key."""
+    if distinct_keys:
+        deduped: List[Dict[str, Any]] = []
+        seen: set[Tuple[Any, ...]] = set()
+        for row in rows:
+            signature = tuple(get_value_by_path(row, key) for key in distinct_keys)
+            if signature in seen:
+                continue
+            seen.add(signature)
+            deduped.append(dict(row))
+        rows = deduped
+
+    if copies:
+        duplicated_fields: List[Dict[str, Any]] = []
+        for row in rows:
+            new_row = dict(row)
+            for field_copy in copies:
+                source = str(field_copy.get("field") or field_copy.get("source") or "")
+                target = str(field_copy.get("target") or field_copy.get("name") or "")
+                if not source or not target:
+                    continue
+                new_row[target] = get_value_by_path(row, source, field_copy.get("default"))
+            duplicated_fields.append(new_row)
+        rows = duplicated_fields
+
+    if times <= 1:
+        return rows
+
+    duplicated_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        for index in range(times):
+            new_row = dict(row)
+            new_row.setdefault("duplicateIndex", index + 1)
+            duplicated_rows.append(new_row)
+    return duplicated_rows
+
+
+def aggregate_values(values: List[Any], operator: str, separator: str = ", ") -> Any:
+    normalized_operator = str(operator or "first").lower()
+    compact_values = [value for value in values if value is not None and value != ""]
+
+    if normalized_operator == "count":
+        return len(compact_values)
+    if normalized_operator == "sum":
+        total = 0.0
+        for value in compact_values:
+            try:
+                total += float(value)
+            except (TypeError, ValueError):
+                continue
+        return int(total) if total.is_integer() else total
+    if normalized_operator == "min":
+        return min(compact_values) if compact_values else None
+    if normalized_operator == "max":
+        return max(compact_values) if compact_values else None
+    if normalized_operator == "concat":
+        return separator.join(str(value) for value in compact_values)
+    if normalized_operator == "unique_concat":
+        seen: List[Any] = []
+        for value in compact_values:
+            if value not in seen:
+                seen.append(value)
+        return separator.join(str(value) for value in seen)
+    if normalized_operator == "first":
+        return compact_values[0] if compact_values else None
+    if normalized_operator == "last":
+        return compact_values[-1] if compact_values else None
+    return compact_values[0] if compact_values else None
+
+
+def group_records(
+    rows: List[Dict[str, Any]],
+    group_keys: List[str],
+    aggregations: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """Group row theo keys và áp dụng các phép tổng hợp cơ bản."""
+    grouped: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        signature = tuple(get_value_by_path(row, key) for key in group_keys)
+        grouped[signature].append(row)
+
+    results: List[Dict[str, Any]] = []
+    for signature, group_rows in grouped.items():
+        result_row = {key: signature[index] for index, key in enumerate(group_keys)}
+        if not aggregations:
+            result_row["count"] = len(group_rows)
+            results.append(result_row)
+            continue
+
+        for aggregation in aggregations:
+            field = str(aggregation.get("field") or "")
+            operator = str(aggregation.get("op") or aggregation.get("type") or "first")
+            target = str(aggregation.get("target") or field or operator)
+            separator = str(aggregation.get("separator") or ", ")
+            values = [get_value_by_path(row, field) for row in group_rows] if field else group_rows
+            result_row[target] = aggregate_values(values, operator, separator)
+        results.append(result_row)
+
+    return results
+
+
+def pivot_records(
+    rows: List[Dict[str, Any]],
+    index_fields: List[str],
+    column_field: str,
+    value_field: str,
+    aggregator: str = "first",
+    fill_value: Any = None,
+    column_prefix: str = "",
+) -> List[Dict[str, Any]]:
+    """Pivot row theo index fields và column/value field."""
+    grouped: Dict[Tuple[Any, ...], Dict[str, List[Any]]] = defaultdict(lambda: defaultdict(list))
+    pivot_columns: List[str] = []
+
+    for row in rows:
+        index_key = tuple(get_value_by_path(row, field) for field in index_fields)
+        pivot_key_raw = get_value_by_path(row, column_field)
+        if pivot_key_raw is None:
+            continue
+        pivot_key = f"{column_prefix}{pivot_key_raw}"
+        grouped[index_key][pivot_key].append(get_value_by_path(row, value_field))
+        if pivot_key not in pivot_columns:
+            pivot_columns.append(pivot_key)
+
+    results: List[Dict[str, Any]] = []
+    for index_key, value_map in grouped.items():
+        result_row = {field: index_key[pos] for pos, field in enumerate(index_fields)}
+        for pivot_key in pivot_columns:
+            values = value_map.get(pivot_key, [])
+            result_row[pivot_key] = (
+                aggregate_values(values, aggregator) if values else fill_value
+            )
+        results.append(result_row)
+    return results
+
+
+def sort_records(rows: List[Dict[str, Any]], sort_keys: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sort đa cột ổn định, hỗ trợ numeric/text và asc/desc."""
+    sorted_rows = list(rows)
+
+    def coerce_sort_value(value: Any, numeric: bool) -> Any:
+        if value is None:
+            return float("-inf") if numeric else ""
+        if numeric:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return float("-inf")
+        return str(value)
+
+    for sort_key in reversed(sort_keys):
+        field = str(sort_key.get("field") or sort_key.get("name") or "")
+        if not field:
+            continue
+        reverse = str(sort_key.get("direction") or "asc").lower() == "desc"
+        numeric = bool(sort_key.get("numeric", False))
+        sorted_rows.sort(
+            key=lambda row, field=field, numeric=numeric: coerce_sort_value(
+                get_value_by_path(row, field),
+                numeric,
+            ),
+            reverse=reverse,
+        )
+    return sorted_rows
+
 def normalize_records(rows_raw: Any) -> Tuple[List[Dict[str, Any]], int]:
     """
     Ép kiểu dữ liệu (coercion) đầu vào thành list các row-dicts.
@@ -311,7 +587,8 @@ def evaluate_calc_expression(
 
     try:
         return eval(expr, _eval_globals)
-    except Exception:
+    except Exception as ex:
+        print(f"[CALCULATION ERROR] Lỗi khi tính toán biểu thức: {expr} | Chi tiết: {ex}")
         return None
 
 

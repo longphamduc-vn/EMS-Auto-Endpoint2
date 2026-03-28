@@ -10,10 +10,12 @@ Phát các pyqtSignal để cập nhật UI mà không block main thread:
 """
 
 import hashlib
+import html
 import json
 import os
 import re
 import traceback
+import unicodedata
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,15 +26,21 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from .constants import ACCUMULATED_FILE, CACHE_DIR
 from .nexacro import nexacro_xml_to_json, payload_to_nexacro_xml
 from .utils import (
+    duplicate_rows,
     dict_of_lists_to_records,
     evaluate_calc_expression,
     flatten_single,
+    group_records,
     jsonpath_values,
     load_json,
     merge_records_inner,
+    merge_record_sets,
     normalize_extracts,
     records_to_dict_of_lists,
+    rows_from_any,
     save_json,
+    sort_records,
+    pivot_records,
 )
 
 
@@ -210,6 +218,103 @@ class WorkflowWorker(QThread):
                 ]
         return result
 
+    def _empty_extracts_result(self, extracts: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Tạo result rỗng theo schema extracts để UI vẫn hiển thị đúng cột."""
+        result: Dict[str, Any] = {}
+        for ext in extracts:
+            name = ext.get("name")
+            if isinstance(name, str) and name:
+                result[name] = []
+        return result
+
+    def _response_error_info(self, parsed_response: Dict[str, Any]) -> Tuple[Optional[int], str]:
+        """Đọc ErrorCode/ErrorMsg từ Parameters theo nhiều biến thể key."""
+        params = parsed_response.get("parameters", {})
+        if not isinstance(params, dict):
+            return None, ""
+
+        error_code_raw = params.get("ErrorCode")
+        if error_code_raw is None:
+            error_code_raw = params.get("errorCode")
+        if error_code_raw is None:
+            error_code_raw = params.get("errorcode")
+
+        error_msg = params.get("ErrorMsg")
+        if error_msg is None:
+            error_msg = params.get("errorMsg")
+        if error_msg is None:
+            error_msg = params.get("errormsg")
+
+        error_code: Optional[int]
+        try:
+            if error_code_raw in (None, ""):
+                error_code = None
+            else:
+                error_code = int(error_code_raw)
+        except (ValueError, TypeError):
+            error_code = None
+
+        return error_code, "" if error_msg is None else html.unescape(str(error_msg)).strip()
+
+    def _normalize_error_text(self, text: str) -> str:
+        """Chuẩn hoá ErrorMsg để so khớp token ổn định hơn."""
+        if not text:
+            return ""
+        normalized = html.unescape(text)
+        normalized = unicodedata.normalize("NFKC", normalized)
+        normalized = normalized.lower()
+        # Giữ chữ/số và khoảng trắng, bỏ ký tự phân tách như '-', ':', '.'...
+        normalized = re.sub(r"[^\w\s가-힣]", " ", normalized)
+        normalized = " ".join(normalized.split())
+        return normalized
+
+    def _is_no_data_response(self, error_code: Optional[int], error_msg: str) -> bool:
+        """
+        Nhận diện phản hồi 'không có dữ liệu'.
+        Không phụ thuộc duy nhất vào một mã cụ thể (ví dụ -1).
+        """
+        normalized = self._normalize_error_text(error_msg)
+        message_indicates_no_data = any(
+            token in normalized
+            for token in (
+                "데이터 없음",
+                "데이터없음",
+                "no data",
+                "not found",
+                "khong co du lieu",
+                "không có dữ liệu",
+                "ko co du lieu",
+            )
+        )
+
+        if message_indicates_no_data:
+            return True
+
+        if error_code is not None and error_code != 0 and not error_msg:
+            # Một số API chỉ trả mã lỗi khi không có dữ liệu,
+            # nhưng quyết định cuối cùng cần kết hợp với nội dung response.
+            return True
+
+        return False
+
+    def _response_has_data(self, parsed_response: Dict[str, Any]) -> bool:
+        """Kiểm tra response có dữ liệu thực hay không để tránh classify nhầm no-data."""
+        payload = parsed_response.get("response")
+        if isinstance(payload, list):
+            return len(payload) > 0
+        if isinstance(payload, dict):
+            if not payload:
+                return False
+            for value in payload.values():
+                if isinstance(value, list) and len(value) > 0:
+                    return True
+                if isinstance(value, dict) and len(value) > 0:
+                    return True
+                if value not in (None, "", []):
+                    return True
+            return False
+        return payload not in (None, "", [], {})
+
     # ------------------------------------------------------------------
     # HTTP request with retry
     # ------------------------------------------------------------------
@@ -232,10 +337,23 @@ class WorkflowWorker(QThread):
                     timeout=30,
                 )
                 response.raise_for_status()
+                content = response.content or b""
+                if not content:
+                    return ""
+
+                # Nexacro phản hồi thường là UTF-8 theo XML declaration.
+                for encoding in ("utf-8", response.encoding, "cp949", "euc-kr"):
+                    if not encoding:
+                        continue
+                    try:
+                        return content.decode(encoding)
+                    except (LookupError, UnicodeDecodeError):
+                        continue
+
                 return response.text
-            except Exception as ex:
+            except requests.RequestException as ex:
                 last_error = ex
-                self.log(f"Retry {attempt}/3 — {ex}")
+                self.log(f"Retry {attempt}/3 — Network/HTTP Error: {ex}")
 
         raise RuntimeError(f"Request failed after 3 retries: {last_error}")
 
@@ -446,6 +564,190 @@ class WorkflowWorker(QThread):
         )
         return self._rows_to_result(filtered_rows)
 
+    def _resolve_source_rows(
+        self,
+        context: Dict[str, Any],
+        source: Any,
+        current_rows: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        if source in (None, "", "$current", "current"):
+            return list(current_rows or [])
+
+        if isinstance(source, (dict, list)):
+            return rows_from_any(source)
+
+        if not isinstance(source, str):
+            return rows_from_any(source)
+
+        if source.startswith("$.accumulated_data."):
+            resolved = self.resolve_accumulated_display(
+                {"name": "transform", "accumulation": source},
+                context,
+                {},
+            )
+            return self._records_from_step_data(resolved)
+
+        if source in context:
+            return rows_from_any(context[source])
+
+        values = jsonpath_values(context, source)
+        if values:
+            return rows_from_any(flatten_single(values))
+        return []
+
+    def _normalize_sort_keys(self, config: Any) -> List[Dict[str, Any]]:
+        if not isinstance(config, list):
+            return []
+        normalized: List[Dict[str, Any]] = []
+        for item in config:
+            if isinstance(item, str):
+                normalized.append({"field": item, "direction": "asc"})
+            elif isinstance(item, dict):
+                normalized.append(item)
+        return normalized
+
+    def _apply_transform_operation(
+        self,
+        step_name: str,
+        operation: Dict[str, Any],
+        context: Dict[str, Any],
+        current_rows: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        raw_type = str(operation.get("type") or operation.get("name") or "")
+        op_type = raw_type.strip().upper().replace("-", "_").replace(" ", "_")
+        if not op_type:
+            return current_rows
+
+        if op_type == "ACCUMULATE":
+            mode = str(operation.get("mode") or "").lower()
+            source = operation.get("source")
+            target_step = str(operation.get("target") or step_name)
+
+            if mode in {"load", "read"} or source:
+                loaded_rows = self._resolve_source_rows(context, source, current_rows)
+                if operation.get("appendCurrent"):
+                    return list(current_rows) + loaded_rows
+                return loaded_rows
+
+            rows_to_store = list(current_rows)
+            if rows_to_store:
+                self.append_accumulated(target_step, records_to_dict_of_lists(rows_to_store))
+            if operation.get("reload"):
+                store = self._load_accumulated_store()
+                return rows_from_any(store.get(target_step, []))
+            return current_rows
+
+        if op_type == "MERGE":
+            left_rows = self._resolve_source_rows(
+                context,
+                operation.get("leftSource", "$current"),
+                current_rows,
+            )
+            right_rows = self._resolve_source_rows(
+                context,
+                operation.get("rightSource") or operation.get("source") or operation.get("with"),
+                current_rows,
+            )
+            join_keys = operation.get("joinKeys", []) or []
+            join_type = str(operation.get("joinType") or "INNER_JOIN")
+            merged_rows = merge_record_sets(
+                left_rows,
+                right_rows,
+                join_keys,
+                join_type,
+                str(operation.get("leftPrefix", "left.")),
+                str(operation.get("rightPrefix", "right.")),
+            )
+            self.log(
+                f"[DEBUG] transform step={step_name} op=MERGE left={len(left_rows)} right={len(right_rows)} merged={len(merged_rows)}"
+            )
+            return merged_rows
+
+        if op_type == "DUPLICATE":
+            copies = operation.get("copies")
+            if not copies and operation.get("field") and operation.get("targetField"):
+                copies = [
+                    {
+                        "field": operation.get("field"),
+                        "target": operation.get("targetField"),
+                        "default": operation.get("default"),
+                    }
+                ]
+            distinct_keys = operation.get("distinctKeys")
+            if not distinct_keys and operation.get("distinct"):
+                distinct_keys = operation.get("keys") or []
+            return duplicate_rows(
+                current_rows,
+                copies=copies if isinstance(copies, list) else None,
+                times=max(int(operation.get("times", 1)), 1),
+                distinct_keys=distinct_keys if isinstance(distinct_keys, list) else None,
+            )
+
+        if op_type in {"GROUP_BY", "GROUP"}:
+            group_keys = operation.get("keys") or operation.get("groupBy") or []
+            return group_records(
+                current_rows,
+                list(group_keys) if isinstance(group_keys, list) else [],
+                operation.get("aggregations") if isinstance(operation.get("aggregations"), list) else None,
+            )
+
+        if op_type == "PIVOT":
+            index_fields = operation.get("index") or operation.get("keys") or []
+            return pivot_records(
+                current_rows,
+                list(index_fields) if isinstance(index_fields, list) else [],
+                str(operation.get("columnField") or operation.get("column") or ""),
+                str(operation.get("valueField") or operation.get("value") or ""),
+                str(operation.get("aggregator") or operation.get("op") or "first"),
+                operation.get("fillValue"),
+                str(operation.get("columnPrefix") or ""),
+            )
+
+        if op_type == "SORT":
+            return sort_records(current_rows, self._normalize_sort_keys(operation.get("keys") or operation.get("sortBy")))
+
+        self.log(f"[DEBUG] transform step={step_name} unsupported_op={raw_type}")
+        return current_rows
+
+    def apply_step_transforms(
+        self,
+        step: Dict[str, Any],
+        context: Dict[str, Any],
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        transforms = step.get("transforms") or step.get("pipeline") or []
+        if not isinstance(transforms, list) or not transforms:
+            return result
+
+        step_name = str(step.get("name", "transform"))
+        rows = self._records_from_step_data(result)
+        for operation in transforms:
+            if not isinstance(operation, dict):
+                continue
+            rows = self._apply_transform_operation(step_name, operation, context, rows)
+        self.log(
+            f"[DEBUG] transform step={step_name} pipeline_ops={len(transforms)} rows={len(rows)}"
+        )
+        return records_to_dict_of_lists(rows)
+
+    def run_transform_step(
+        self,
+        step: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        base_rows = self._resolve_source_rows(context, step.get("source"), [])
+        transforms = step.get("transforms") or step.get("pipeline") or []
+        step_name = str(step.get("name", "transform"))
+        rows = list(base_rows)
+        for operation in transforms:
+            if not isinstance(operation, dict):
+                continue
+            rows = self._apply_transform_operation(step_name, operation, context, rows)
+        self.log(
+            f"[DEBUG] DATA_TRANSFORM step={step_name} base_rows={len(base_rows)} result_rows={len(rows)}"
+        )
+        return records_to_dict_of_lists(rows)
+
     # ------------------------------------------------------------------
     # Step runners
     # ------------------------------------------------------------------
@@ -525,13 +827,35 @@ class WorkflowWorker(QThread):
                 resp_xml = self.request_with_retry(method, url, xml_payload)
 
                 resp_json = nexacro_xml_to_json(resp_xml)
-          
-                
+
                 self.log(
                     f"[DEBUG] HTTP step={step_name} parsed_response={self._to_json_preview(resp_json, 400)}"
                 )
-                
-                step_data = self.apply_extracts(extracts, resp_json)
+
+                error_code, error_msg = self._response_error_info(resp_json)
+                has_error_code = error_code is not None and error_code != 0
+                response_has_data = self._response_has_data(resp_json)
+                if has_error_code or error_msg:
+                    if self._is_no_data_response(error_code, error_msg) and not response_has_data:
+                        self.log(
+                            f"[DEBUG] HTTP step={step_name} no_data_response error_code={error_code} error_msg={error_msg}"
+                        )
+                        step_data = self._empty_extracts_result(extracts)
+                    elif has_error_code:
+                        if response_has_data:
+                            self.log(
+                                f"[DEBUG] HTTP step={step_name} nonzero_error_but_has_data error_code={error_code} error_msg={error_msg}"
+                            )
+                            step_data = self.apply_extracts(extracts, resp_json)
+                        else:
+                            raise RuntimeError(
+                                f"Nexacro error at step '{step_name}': ErrorCode={error_code}, ErrorMsg={error_msg}"
+                            )
+                    else:
+                        step_data = self.apply_extracts(extracts, resp_json)
+                else:
+                    step_data = self.apply_extracts(extracts, resp_json)
+
                 self.log(
                     f"[DEBUG] HTTP step={step_name} iteration={idx + 1}/{len(loop_items)}"
                 )
@@ -670,6 +994,7 @@ class WorkflowWorker(QThread):
 
                 elif step_type == "HTTP_REQUEST":
                     result, cache_used = self.run_http_step(step, context)
+                    result = self.apply_step_transforms(step, context, result)
                     context[step_name] = result
                     if step.get("accumulation", False):
                         self.append_accumulated(step_name, result)
@@ -678,6 +1003,15 @@ class WorkflowWorker(QThread):
 
                 elif step_type == "DATA_MAPPING":
                     result = self.run_mapping_step(step, context)
+                    result = self.apply_step_transforms(step, context, result)
+                    context[step_name] = result
+                    if step.get("accumulation", False):
+                        self.append_accumulated(step_name, result)
+                    display_result = self.resolve_accumulated_display(step, context, result)
+                    self.step_completed.emit(step_name, display_result, False)
+
+                elif step_type == "DATA_TRANSFORM":
+                    result = self.run_transform_step(step, context)
                     context[step_name] = result
                     if step.get("accumulation", False):
                         self.append_accumulated(step_name, result)

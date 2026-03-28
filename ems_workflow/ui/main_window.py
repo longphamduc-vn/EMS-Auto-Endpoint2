@@ -11,6 +11,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
@@ -31,6 +32,7 @@ from PyQt6.QtWidgets import (
 
 from ..constants import (
     ACCUMULATED_FILE,
+    AUTO_EXPORT_BASE_DIR,
     FALLBACK_WORKFLOW_FILE,
     SAVED_FILTERS_FILE,
     WORKFLOW_FILE,
@@ -38,7 +40,10 @@ from ..constants import (
 from ..engine import WorkflowWorker
 from ..utils import dict_of_lists_to_records, ensure_json_file, load_json, normalize_records
 from .input_tab import InputTableWidget, build_input_tab, collect_input_data
-from .output_tab import build_output_tab, populate_output_table
+from .output_tab import (
+    build_output_tab,
+    populate_output_table,
+)
 
 
 class WorkflowApp(QMainWindow):
@@ -103,6 +108,7 @@ class WorkflowApp(QMainWindow):
         # Log panel
         self.log_panel = QTextEdit()
         self.log_panel.setReadOnly(True)
+        self.log_panel.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.log_panel.setFixedHeight(180)
         root_layout.addWidget(self.log_panel)
 
@@ -223,6 +229,8 @@ class WorkflowApp(QMainWindow):
                     table_registry=self.step_tables,
                     cache_check_registry=self.cache_checks,
                     log_fn=self._log,
+                    task_name=task_name,
+                    base_export_dir=AUTO_EXPORT_BASE_DIR,
                 )
 
             self.tabs.addTab(tab_widget, tab_title)
@@ -350,7 +358,19 @@ class WorkflowApp(QMainWindow):
             if isinstance(name, str) and name and isinstance(label, str) and label:
                 label_map[name] = label
 
-        populate_output_table(table, rows, label_map)
+        for column in step_cfg.get("columns", []) or []:
+            if not isinstance(column, dict):
+                continue
+            name = column.get("name") or column.get("field")
+            label = column.get("label")
+            if isinstance(name, str) and name and isinstance(label, str) and label:
+                label_map[name] = label
+
+        style_rules = step_cfg.get("styles")
+        if not isinstance(style_rules, dict):
+            style_rules = step_cfg.get("tableStyle") if isinstance(step_cfg.get("tableStyle"), dict) else None
+
+        populate_output_table(table, rows, label_map, style_rules)
 
         if step_name in self.cache_checks:
             self.cache_checks[step_name].setChecked(cache_used)

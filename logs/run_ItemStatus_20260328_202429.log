@@ -1,0 +1,74 @@
+Run started: 2026-03-28T20:24:29.154986
+[2026-03-28 20:24:29] === RUN STARTED === 2026-03-28T20:24:29.155148
+[2026-03-28 20:24:29] Task=ItemStatus steps=6
+[2026-03-28 20:24:29] Input keys: items
+[2026-03-28 20:24:29] Input[items] count=4 sample=['QCAKA0171', 'QCAKA0170', 'QCAKA0104', 'QDAA48980']
+[2026-03-28 20:24:29] Bắt đầu chạy workflow…
+[2026-03-28 20:24:29] [20:24:29] Task start: name=ItemStatus steps=6
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] session={"organizationId": "28753", "itemCond": "Y", "optimizeFlag": "Y", "optimizedApplyDate": "20210316"}
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] INPUT registered step=input_items data={"items": ["QCAKA0171", "QCAKA0170", "QCAKA0104", "QDAA48980"]}
+[2026-03-28 20:24:29] Step bắt đầu: input_items
+[2026-03-28 20:24:29] [20:24:29] ▶ Step: input_items [INPUT]
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] Step config input_items: {"name": "input_items", "label": "Nhập thông tin lô hàng", "type": "INPUT", "fields": [{"label": "Q code", "name": "items"}]}
+[2026-03-28 20:24:29] Step hoàn thành: input_items [INPUT]
+[2026-03-28 20:24:29] [DEBUG] step=input_items keys=[items] rows_raw=4 seq_sizes={'items': 4}
+[2026-03-28 20:24:29] [DEBUG] step=input_items INPUT rows=4 (skip output render)
+[2026-03-28 20:24:29] Step bắt đầu: StockStatusList
+[2026-03-28 20:24:29] [20:24:29] ▶ Step: StockStatusList [HTTP_REQUEST]
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] Step config StockStatusList: {"name": "StockStatusList", "label": "Stock Status", "type": "HTTP_REQUEST", "loopOver": null, "cache": false, "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp110Nav/RetStockStatusList.lgdn", "method": "POST", "payload": {"parameters": {"_ems_userId": "$.session.__ems_userId", "_ems_organizationId": "$.session.__ems_organizationId"}, "datasets": [{"id": "ds_search", "fields": [{"name": "organizationId", "value": "$.session.organizationId"}, {"name": "itemCond", "value": "$.session.itemCond"}, {"name": "optimizedApplyDate", "value": "$.session.optimizedApplyDate"}]}, {"id": "ds_Item...
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockStatusList method=POST loop_count=1 extracts=12
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockStatusList iteration=1/1 payload=ds_search rows=1 fields=['organizationId', 'itemCond', 'optimizedApplyDate']; ds_ItemInfo rows=4 fields=['item']
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockStatusList cache_key=6a6cb88d4fbb payload_size=835
+[2026-03-28 20:24:29] [20:24:29] [DEBUG--] HTTP step=StockStatusList xml_payload=b'<?xml version=\'1.0\' encoding=\'utf-8\'?>\n<Root xmlns="http://www.nexacroplatform.com/platform/dataset"><Parameters><Parameter id="_ems_userId" /><Parameter id="_ems_organizationId" /></Parameters><Dataset id="ds_search"><ColumnInfo><Column id="organizationId" type="STRING" size="256" /><Column id="itemCond" type="STRING" size="256" /><Column id="optimizedApplyDate" type="STRING" size="256" /></ColumnInfo><Rows><Row><Col id="organizationId">28753</Col><Col id="itemCond">Y</Col><Col id="optimizedApplyDate">20210316</Col></Row></Rows></Dataset><Dataset id="ds_ItemInfo"><ColumnInfo><Column id="item" type="STRING" size="256" /></ColumnInfo><Rows><Row><Col id="item">QCAKA0171</Col></Row><Row><Col id="item">QCAKA0170</Col></Row><Row><Col id="item">QCAKA0104</Col></Row><Row><Col id="item">QDAA48980</Col></Row></Rows></Dataset></Root>'
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockStatusList parsed_response={"parameters": {"errorCode": 1, "errorMsg": ""}, "response": {"itemName": ["QCAKA0104", "QCAKA0170", "QCAKA0171", "QDAA48980"], "organizationId": ["28753", "28753", "28753", "28753"], "inventoryItemId": ["3939889", "3946569", "3942053", "2576743"], "itemDescription": ["Block ** M250158A-C200-08-0, AVACO CO.,LTD, Size:33*33*23, Material:ALUMINUM6061+ANODIZING(BLACK), Division:, Addition Specificati...
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockStatusList no_data_response error_code=1 error_msg=
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockStatusList iteration=1/1
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockStatusList aggregate_items=0
+[2026-03-28 20:24:29] Step hoàn thành: StockStatusList [HTTP_REQUEST]
+[2026-03-28 20:24:29] [DEBUG] step=StockStatusList keys=[date, inventoryItemId, itemName, itemDescription, itemStatus, uomCode, catalogGroupName, maker] rows_raw=0 seq_sizes={'date': 0, 'inventoryItemId': 0, 'itemName': 0, 'itemDescription': 0, 'itemStatus': 0, 'uomCode': 0, 'catalogGroupName': 0, 'maker': 0, 'model': 0, 'itemSpec': 0, 'redFlag': 0, 'fdmUrl': 0}
+[2026-03-28 20:24:29] [DEBUG] step=StockStatusList rows_ready=0 first_row_type=none
+[2026-03-28 20:24:29] Step bắt đầu: StockDetail
+[2026-03-28 20:24:29] [20:24:29] ▶ Step: StockDetail [HTTP_REQUEST]
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] Step config StockDetail: {"name": "StockDetail", "label": "Stock Detail", "type": "HTTP_REQUEST", "loopOver": "$.StockStatusList.inventoryItemId", "cache": false, "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp102/sp135Nav/retrieveItemInfoDetail.lgdn", "method": "POST", "payload": {"parameters": {"_ems_userId": "$.session.auth_token", "_ems_organizationId": "$.session.auth_token", "_ems_language": "$.session.auth_token"}, "datasets": [{"id": "ds_Input", "fields": [{"name": "organizationId", "value": "$.session.organizationId"}, {"name": "inventoryItemId", "source": "$.StockStatusList.inventoryItemId"}]}]}, "ext...
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockDetail method=POST loop_count=0 extracts=27
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=StockDetail aggregate_items=0
+[2026-03-28 20:24:29] Step hoàn thành: StockDetail [HTTP_REQUEST]
+[2026-03-28 20:24:29] [DEBUG] step=StockDetail keys=[] rows_raw=0 seq_sizes={}
+[2026-03-28 20:24:29] [DEBUG] step=StockDetail rows_ready=0 first_row_type=none
+[2026-03-28 20:24:29] Step bắt đầu: PoStatusCheck
+[2026-03-28 20:24:29] [20:24:29] ▶ Step: PoStatusCheck [HTTP_REQUEST]
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] Step config PoStatusCheck: {"name": "PoStatusCheck", "label": "PO Status Check", "type": "HTTP_REQUEST", "loopOver": "$.StockStatusList.inventoryItemId", "cache": false, "url": "http://ems.lgdisplay.com:9000/emscom/popupNav/retrieveItemPoStatusList.lgdn", "method": "POST", "payload": {"parameters": {"_ems_userId": "658359", "_ems_organizationId": "$.session.organizationId", "_ems_language": "EN"}, "datasets": [{"id": "ds_Search", "fields": [{"name": "organizationId", "value": "$.session.organizationId"}, {"name": "invItemList", "source": "$.StockStatusList.inventoryItemId"}]}]}, "extracts": [{"label": "Item", "name": "i...
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=PoStatusCheck method=POST loop_count=0 extracts=15
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=PoStatusCheck aggregate_items=0
+[2026-03-28 20:24:29] Step hoàn thành: PoStatusCheck [HTTP_REQUEST]
+[2026-03-28 20:24:29] [DEBUG] step=PoStatusCheck keys=[] rows_raw=0 seq_sizes={}
+[2026-03-28 20:24:29] [DEBUG] step=PoStatusCheck rows_ready=0 first_row_type=none
+[2026-03-28 20:24:29] Step bắt đầu: EstimateHistory
+[2026-03-28 20:24:29] [20:24:29] ▶ Step: EstimateHistory [HTTP_REQUEST]
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] Step config EstimateHistory: {"name": "EstimateHistory", "label": "Estimate History", "type": "HTTP_REQUEST", "loopOver": null, "cache": false, "accumulation": "$.accumulated_data.ItemStatus.EstimateHistory[?(@.item in $.StockDetail[*].item )]", "url": "http://ems.lgdisplay.com:9000/emsspareparts/sp101/sp120Nav/RetEstimateRequestList.lgdn", "method": "POST", "payload": {"parameters": {"_ems_userId": "658359", "_ems_organizationId": "$.session.organizationId", "_ems_language": "EN"}, "datasets": [{"id": "ds_Search", "fields": [{"name": "organizationId", "value": "28753"}, {"name": "itemType", "value": "Q"}, {"name": "estim...
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=EstimateHistory method=POST loop_count=1 extracts=64
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=EstimateHistory iteration=1/1 payload=ds_Search rows=1 fields=['organizationId', 'itemType', 'estimateRequestDateFrom', 'estimateRequestDateTo', 'userId', 'itemYn']; ds_ItemInfo rows=4 fields=['item']
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=EstimateHistory cache_key=22e6f44e09a9 payload_size=1175
+[2026-03-28 20:24:29] [20:24:29] [DEBUG--] HTTP step=EstimateHistory xml_payload=b'<?xml version=\'1.0\' encoding=\'utf-8\'?>\n<Root xmlns="http://www.nexacroplatform.com/platform/dataset"><Parameters><Parameter id="_ems_userId">658359</Parameter><Parameter id="_ems_organizationId">28753</Parameter><Parameter id="_ems_language">EN</Parameter></Parameters><Dataset id="ds_Search"><ColumnInfo><Column id="organizationId" type="STRING" size="256" /><Column id="itemType" type="STRING" size="256" /><Column id="estimateRequestDateFrom" type="STRING" size="256" /><Column id="estimateRequestDateTo" type="STRING" size="256" /><Column id="userId" type="STRING" size="256" /><Column id="itemYn" type="STRING" size="256" /></ColumnInfo><Rows><Row><Col id="organizationId">28753</Col><Col id="itemType">Q</Col><Col id="estimateRequestDateFrom">20250301</Col><Col id="estimateRequestDateTo">20260327</Col><Col id="userId">658359</Col><Col id="itemYn">Y</Col></Row></Rows></Dataset><Dataset id="ds_ItemInfo"><ColumnInfo><Column id="item" type="STRING" size="256" /></ColumnInfo><Rows><Row><Col id="item">QCAKA0171</Col></Row><Row><Col id="item">QCAKA0170</Col></Row><Row><Col id="item">QCAKA0104</Col></Row><Row><Col id="item">QDAA48980</Col></Row></Rows></Dataset></Root>'
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=EstimateHistory parsed_response={"parameters": {"errorCode": 1, "errorMsg": ""}, "response": {"checked": ["0", "0", "0", "0"], "prvNo": ["", "", "", ""], "filePrvNo": ["Q2603-2876122", "Q2603-2876121", "Q2603-2873855", "Q2603-2874046"], "estimateRequestDate": ["20260327000000000", "20260327000000000", "20260326000000000", "20260326000000000"], "contact": ["LGDVH", "LGDVH", "LGDVH", "LGDVH"], "factory": ["HW", "HW", "HW", "HW"], ...
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=EstimateHistory no_data_response error_code=1 error_msg=
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=EstimateHistory iteration=1/1
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] HTTP step=EstimateHistory aggregate_items=0
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] accumulation step=EstimateHistory appended=0 total=0 file=D:\EMS-Auto-Endpoint2-main\accumulated_data.json
+[2026-03-28 20:24:29] [20:24:29] [DEBUG] accumulation step=EstimateHistory empty_filter_values accumulated_rows=0 fallback_to_live=0
+[2026-03-28 20:24:29] Step hoàn thành: EstimateHistory [HTTP_REQUEST]
+[2026-03-28 20:24:29] [DEBUG] step=EstimateHistory keys=[] rows_raw=0 seq_sizes={}
+[2026-03-28 20:24:30] [DEBUG] step=EstimateHistory rows_ready=0 first_row_type=none
+[2026-03-28 20:24:30] Step bắt đầu: match_inventory_data
+[2026-03-28 20:24:30] [20:24:29] ▶ Step: match_inventory_data [DATA_MAPPING]
+[2026-03-28 20:24:30] [20:24:29] [DEBUG] Step config match_inventory_data: {"name": "match_inventory_data", "label": "Match Aggregated Data", "type": "DATA_MAPPING", "description": "Combine data from RetStockStatusList and StockDetail based on Item code", "inputs": {"sourceA": "$.StockStatusList", "sourceB": "$.StockDetail"}, "mapping": {"joinType": "INNER_JOIN", "joinKeys": [{"leftKey": "itemName", "rightKey": "item"}]}, "extracts": [{"label": "Item Code", "name": "itemCode", "type": "JSON_PATH", "value": "$.sourceA.itemName"}, {"label": "Item Name", "name": "itemName", "type": "JSON_PATH", "value": "$.sourceA.itemDescription"}, {"label": "Maker Info", "name": "make...
+[2026-03-28 20:24:30] [20:24:30] [DEBUG] MAP step=match_inventory_data sourceA_type=dict sourceB_type=dict
+[2026-03-28 20:24:30] [20:24:30] [DEBUG] MAP step=match_inventory_data left=0 right=0 merged=0
+[2026-03-28 20:24:30] [20:24:30] [DEBUG] MAP step=match_inventory_data output_items=0
+[2026-03-28 20:24:30] Step hoàn thành: match_inventory_data [DATA_MAPPING]
+[2026-03-28 20:24:30] [DEBUG] step=match_inventory_data keys=[] rows_raw=0 seq_sizes={}
+[2026-03-28 20:24:30] [DEBUG] step=match_inventory_data rows_ready=0 first_row_type=none
+[2026-03-28 20:24:30] Workflow hoàn thành.
+[2026-03-28 20:24:30] === RUN COMPLETED ===
+[2026-03-28 20:24:30] Log file: D:\EMS-Auto-Endpoint2-main\logs\run_ItemStatus_20260328_202429.log
+[2026-03-28 20:24:30] [20:24:30] Task completed: context_keys=['session', 'input_items', 'StockStatusList', 'StockDetail', 'PoStatusCheck', 'EstimateHistory', 'match_inventory_data']
